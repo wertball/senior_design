@@ -1,7 +1,7 @@
 #ifndef header_thomas
 #define header_thomas
 
-#define c .5 //learning constant
+#define c .25 //learning constant
 #define I 1 //number of input layer nodes
 #define H 3 //number of nodes per hidden layer
 #define O 1 //number of output layer nodes

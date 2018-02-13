@@ -7,8 +7,8 @@
 main(){
 	float error, last, average, error_one, error_two;
 	int i, j, k, kk;
-	float input[] = {1, 2, 5, 9};
-	float output[] = {1, 4, 25, 81};
+	float input[] = {1, 2, 5, 6};
+	float output[] = {1, 4, 25, 36};
 	float input_bit[4];
 	float output_bit[4];
 	for(i = 0; i < 4; i++){
@@ -24,41 +24,44 @@ main(){
 	printf("\n");
 	}
 	//j = 2;
-	for(j = 0; j < 4; j++){
-		for(i = 0; i < 1000000; i++){
+	//for(j = 0; j < 4; j++){
+	for(i = 0; i < 1000000; i++){
+		for(j = 0; j < 4; j++){
 			error = train_network(input[j], output[j]);
-			if(error < .000001)
-				break;
+			error_one += error;
 		}
-		printf("The total error is %f after %d runs\n", error, i);	
-		printf("\n");
-		last = (feed_fwd(input[j]));
-		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",input[j],last,output[j],last-output[j]);
-		printf("The weights after run %d are: \n", (j+1));
-		for(k = 0; k < L-1; k++){
-			for(i = 0; i < H; i++){
-				printf("%f  ",weights[i][k]);
-				weights_one[i][k] = weights_one[i][k] + weights[i][k];
-			}
-		printf("\n");
-		}
-		error = 0;
+		if((error_one / 4) < .000001)
+			break;
+//		printf("The total error is %f after %d runs\n", error, i);	
+//		printf("\n");
+//		last = (feed_fwd(input[j]));
+//		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",input[j],last,output[j],last-output[j]);
+//		printf("The weights after run %d are: \n", (j+1));
+//		for(k = 0; k < L-1; k++){
+//			for(i = 0; i < H; i++){
+//				printf("%f  ",weights[i][k]);
+//				weights_one[i][k] = weights_one[i][k] + weights[i][k];
+//			}
+//		printf("\n");
+//		}
+		error_one = 0;
 	}
-	for(k = 0; k < L-1; k++){
-		for(i = 0; i < H; i++){
-			weights[i][k] = weights_one[i][k] / 4;
-		}
-	}
+	printf("The total error is %f after %d runs\n", error, i);	
+//	for(k = 0; k < L-1; k++){
+//		for(i = 0; i < H; i++){
+//			weights[i][k] = weights_one[i][k] / 4;
+//		}
+//	}
 	for(j = 0; j < 4; j++){
 		last = (feed_fwd(input[j]));
 		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",input[j],last,output[j],last-output[j]);
 	}
-//	printf("The final weights are: \n");
-//	for(k = 0; k < L-1; k++){
-//		for(j = 0; j < H; j++)
-//			printf("%f  ",weights[j][k]);
-//	printf("\n");
-//	}
+	printf("The final weights are: \n");
+	for(k = 0; k < L-1; k++){
+		for(j = 0; j < H; j++)
+			printf("%f  ",weights[j][k]);
+	printf("\n");
+	}
 //	printf("The total error is %f after %d runs\n", error, i);	
 //	printf("\n");
 	//j = 2;
@@ -75,7 +78,8 @@ void initialize(){
 	for(i = 0; i < H; i++){
 		for(j = 0; j < L-1; j++){
 			r = rand() % 4;
-			weights[i][j] = (float) r + 1.0;
+			weights[i][j] = (float) r + j + 1.0;
+			//weights[i][j] = i * j + 1.0;
 			weights_new[i][j] = 0.0;
 			if(j < L-2)
 				h_o[i][j] = 0.0;
@@ -106,11 +110,9 @@ float train_network(float input, float output){
   	int i, j;
 	float answer, dw, total_error, desired;
 	answer = feed_fwd(input);
-	//printf("answer is %f\n", answer);
 	//desired = output / 256;
   	//find_total_error
 	total_error = find_total_error((output), (answer));
-	//printf("error is %f\n", total_error);
   	//backpropagate
 	for(i = L-2; i > -1 ; i--){
 		for(j = 0; j < H; j++){
@@ -120,8 +122,10 @@ float train_network(float input, float output){
 			else
 				dw = (answer - output) * h_o[j][i-1];
 			//store new weights
+			//printf("answer is %f, output is %f, error is %f, weight is %f, h_o is %f, input is %f, dw is %f\n", answer,output,total_error,weights[j][i],h_o[j][0],input,dw);
 			weights_new[j][i] = weights[j][i] - dw * c;
 		}
+		//printf(".\n");
 	}
 	//implement new weights
 	for(i = 0; i < L-1; i++){
