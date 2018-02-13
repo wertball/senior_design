@@ -9,9 +9,11 @@
 
 float weights[H][L-1]; //weights matrix
 float weights_new[H][L-1]; //new weights calculated by matrix
+float weights_one[H][L-1];
 float h_o[H][L-2]; //hidden layer outputs
 
 float feed_fwd(float x);
+float deactivate(float y);
 void initialize();
 float train_network(float input, float output);
 float activate(float x);
