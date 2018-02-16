@@ -7,7 +7,7 @@
 main(){
 
 	float error, last, average, error_one, error_two;
-	int i, j, k, kk;
+	int i, j, k, kk, run;
 	//float input[] = {1, 2, 5, 6};
 	//float output[] = {1, 4, 25, 36};
 	//float input_bit[4];
@@ -17,8 +17,13 @@ main(){
 	//	output_bit[i] = output[i] / 256.0;
 	//}
 	error_one = 0;
+	error_two = 100;
 
 	initialize();
+
+	for(kk = 0; kk < training_set_size; kk++){
+
+	}
 
 #ifdef DEBUG_MODE
 	printf("The initial weights are: \n");
@@ -38,19 +43,24 @@ main(){
 
 
 	for(i = 0; i < 1000000; i++){
+		error_one = 0;
 		for(j = 0; j < training_set_size; j++){
 			error = train_network(training_set_input[j], training_set_target[j]);
 			error_one += error;
 		}
+		if((error_one / training_set_size) < error_two){
+			error_two = error_one;
+			run = i;
+		}
 		if((error_one / training_set_size) < .000001)
 			break;
-		error_one = 0;
 	}
 
-	printf("The total error is %f after %d runs\n", error, i);
+	printf("The total error is %f after %d runs\n", error_one, i);
+	printf("The lowest error found was %f at run %d\n", error_two, run);
 
 	for(j = 0; j < training_set_size; j++){
-		last = (feed_fwd(training_set_input[j]));
+		last = feed_fwd(training_set_input[j]);
 		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",training_set_input[j],last,training_set_target[j],last-training_set_target[j]);
 #ifdef DEBUG_MODE
 		printf("The outputs are: \n");
@@ -64,7 +74,7 @@ main(){
 	printf("\n");
 	error_one = 0;
 	for(j = 0; j < testing_set_size; j++){
-		last = (feed_fwd(testing_set_input[j]));
+		last = feed_fwd(testing_set_input[j]);
 		error = find_total_error(testing_set_target[j], last);
 		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",testing_set_input[j],last,testing_set_target[j],last - testing_set_target[j]);
 		error_one += error;
@@ -100,6 +110,7 @@ void initialize(){
 			r = rand() % 4;
 			weights[i][j] = (float) r + 1;
 			weights_new[i][j] = 0.0;
+			weights_old[i][j] = 0.0;
 			if(j < L-2){
 				h_o[i][j] = 0.0;
 #ifdef BIAS
@@ -115,6 +126,9 @@ float feed_fwd(float x){
  	
 	int i;
 	float input, sum, output;
+#ifdef NORMALIZE
+	x = normalize(x);
+#endif
 	input = x;
 
 	//input -> hidden layer
@@ -131,6 +145,9 @@ float feed_fwd(float x){
 		sum = sum + h_o[i][0] * weights[i][1];
 	output = sum;
 
+#ifdef NORMALIZE
+	output = denormalize(output);
+#endif
 	//large_output = output * 256.0;
 	return output;
 
@@ -141,22 +158,44 @@ float train_network(float input, float output){
   	//feed_fwd
   	int i, j;
 	float answer, dw, total_error, desired, bw, db;
+#ifdef MOMENTUM
+	float inert;
+#endif
+
 	answer = feed_fwd(input);
 
   	//find_total_error
-	total_error = find_total_error(output, answer);
+	total_error = find_total_error(output,answer);
+
+#ifdef NORMALIZE
+	output = normalize(output);
+	answer = normalize(answer);
+#endif
 
   	//backpropagate
 	for(i = L-2; i > -1 ; i--){
 		for(j = 0; j < H; j++){
 			//calculate dw depeding on layer
 			if(i == 0)
-				dw = (answer - output) * weights[j][1] * h_o[j][0] * (1 - h_o[j][0]) * input;
+				dw = c * ((answer - output) * weights[j][1] * h_o[j][0] * (1 - h_o[j][0]) * input);
 			else
-				dw = (answer - output) * h_o[j][i-1];
-			//store new weights
+				dw = c * ((answer - output) * h_o[j][i-1]);
+#ifdef MOMENTUM
+			inert = u * weights_old[j][i] - dw;
+#endif
+
+#ifdef DEBUG_MODE
 			//printf("answer is %f, output is %f, error is %f, weight is %f, h_o is %f, input is %f, dw is %f\n", answer,output,total_error,weights[j][i],h_o[j][0],input,dw);
-			weights_new[j][i] = weights[j][i] - dw * c;
+#endif
+
+			//store new weights
+			weights_new[j][i] = weights[j][i]
+#ifdef MOMENTUM
+								- inert
+#else
+								- dw
+#endif
+								;
 		}
 		//printf(".\n");
 	}
@@ -171,8 +210,12 @@ float train_network(float input, float output){
 
 	//implement new weights
 	for(i = 0; i < L-1; i++){
-		for(j = 0; j < H; j++)
+		for(j = 0; j < H; j++){
+#ifdef MOMENTUM
+			weights_old[j][i] = weights[j][i];
+#endif
 			weights[j][i] = weights_new[j][i];
+		}
 	}
 
 	return total_error;
@@ -190,3 +233,13 @@ float deactivate(float y){
 float find_total_error(float desired, float actual){
 	return .5 * pow(desired - actual, 2);
 }
+
+#ifdef NORMALIZE
+float normalize(float x){
+	return (x - data_min) / (data_max - data_min);
+}
+
+float denormalize(float z){
+	return (data_max - data_min) * z + data_min;
+}
+#endif
