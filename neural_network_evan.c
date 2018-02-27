@@ -14,11 +14,11 @@
 #define DATA_RANGE (DATA_MAX - DATA_MIN)
 
 //Weight declarations
-float weights_in[INPUTS * H_HEIGHT]; //= {.15,.20,.25,.30};
-float weights_out[OUTPUTS * H_HEIGHT]; //= {.65,.7,.75,.8};
+float weights_in[INPUTS * H_HEIGHT];// = {.15,.20,.25,.30};
+float weights_out[OUTPUTS * H_HEIGHT];// = {.65,.7,.75,.8};
 #if (BIAS > 0)
-float weights_bias_out[OUTPUTS]; //= {0.85, 0.85};
-float weights_bias_h[H_LAYERS][H_HEIGHT]; //= {{.35,.35}, {.6,.6}};
+float weights_bias_out[OUTPUTS];// = {0.85, 0.85};
+float weights_bias_h[H_LAYERS][H_HEIGHT];// = {{.35,.35}, {.6,.6}};
 #endif
 #if (H_LAYERS > 1)
 float weights_h[H_LAYERS - 1][H_HEIGHT * H_HEIGHT] = {.4,.45,.5,.55};
@@ -50,16 +50,7 @@ void randomize_2d_array(int rows, int columns, float arr[rows][columns]) {
 //------------------------------------------------
 
 //Initialization of variables
-void initialize() {
-    for (int i = 0; i < H_HEIGHT; i++) {
-        for (int j = 0; j < H_LAYERS; j++) {
-            h_out[i][j] = 0.0f;
-        }
-    }
-    for (int i = 0; i < OUTPUTS; i++) {
-        outputs[i] = 0.0f;
-    }
-
+static inline void initialize() {
     //Randomize weights
     srand(time(NULL));
     randomize_array(INPUTS * H_HEIGHT, weights_in);
@@ -71,20 +62,19 @@ void initialize() {
     #if (H_LAYERS > 1)
     randomize_2d_array(H_LAYERS - 1, H_HEIGHT * H_HEIGHT, weights_h);
     #endif
-
 }
 
 //Sigmoid activation function
-float activation(float input) {
+static inline float activation(float input) {
     return 1.0f / (1.0f + exp(-1 * input));
 }
 
 //Normalization functions--------------------
-float normalize(float input) {
+static inline float normalize(float input) {
     return (input - DATA_MIN) / (DATA_RANGE);
 }
 
-float denormalize(float input) {
+static inline float denormalize(float input) {
     return (DATA_RANGE) * input + DATA_MIN;
 }
 //--------------------------------------------
@@ -93,6 +83,7 @@ void forward(float in[INPUTS]) {
     //Input layer-----------------------
     for (int i = 0; i < H_HEIGHT; i++) {
         //Input weighted sum
+        h_out[0][i] = 0;
         for (int j = 0; j < INPUTS; j++) {
             h_out[0][i] += weights_in[(i * INPUTS) + j] * in[j];
         }
@@ -113,6 +104,7 @@ void forward(float in[INPUTS]) {
     for (int i = 0; i < (H_LAYERS - 1); i++) { //For each layer
         for (int j = 0; j < H_HEIGHT; j++) { //For each node in a layer
             //Hidden weighted sum
+            h_out[i+1][j] = 0;
             for (int k = 0; k < H_HEIGHT; k++) { //For each node in previous layer
                 h_out[i+1][j] += weights_h[i][(j * H_HEIGHT) + k] * h_out[i][k];
             }
@@ -133,6 +125,7 @@ void forward(float in[INPUTS]) {
     //Output Layer---------------------
     for (int i = 0; i < OUTPUTS; i++) {
         //Hidden layer weighted sum
+        outputs[i] = 0;
         for (int j = 0; j < H_HEIGHT; j++) {
             outputs[i] += weights_out[(i * OUTPUTS) + j] * h_out[H_LAYERS - 1][j];
         }
@@ -143,7 +136,7 @@ void forward(float in[INPUTS]) {
         #endif
         
         //Activation
-        outputs[i] = activation(outputs[i]);
+        //outputs[i] = activation(outputs[i]);
         //printf("Output %d: %f\n", i, outputs[i]);
     }
     //-----------------------------------
@@ -162,7 +155,7 @@ void backpropagation(float in[INPUTS], float target_out[OUTPUTS]) {
     
     //Output layer------------------------------
     for (int i = 0; i < OUTPUTS; i++) {
-        deltas_o[i] = (outputs[i] - target_out[i]) * (outputs[i] * (1 - outputs[i]));
+        deltas_o[i] = (outputs[i] - target_out[i]);// * (outputs[i] * (1 - outputs[i]));
         for (int j = 0; j < H_HEIGHT; j++) {
             weights_out_new[(i * OUTPUTS) + j] = weights_out[(i * OUTPUTS) + j] -
                     (ALPHA * deltas_o[i] * h_out[H_LAYERS - 1][j]);
