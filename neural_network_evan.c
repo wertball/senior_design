@@ -134,7 +134,10 @@ void forward(float in[INPUTS]) {
         #if (BIAS > 0)
         outputs[i] += weights_bias_out[i] * BIAS;
         #endif
-        
+
+        //Normalize output
+        outputs[i] = normalize(outputs[i]);
+
         //Activation
         //outputs[i] = activation(outputs[i]);
         //printf("Output %d: %f\n", i, outputs[i]);
