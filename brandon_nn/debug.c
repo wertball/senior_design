@@ -1,4 +1,5 @@
 #include "debug.h"
+#include "neural_net.h"
 
 void printWeights(Neural_Net *nn){
 	DEBUG_PRINT(("Listing Weights ----------------------------------------------------------------\n"));
@@ -12,7 +13,6 @@ void printWeights(Neural_Net *nn){
 		}
 	}
 	DEBUG_PRINT(("--------------------------------------------------------------------------------\n"));
-	return;
 }
 
 void printInputs(Input_Set_Params *isp, calc_t** input){

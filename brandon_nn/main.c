@@ -119,15 +119,19 @@
 
     //test network
     calc_t input_set[isp->input_set_size];
-    for(calc_t x = 0.05; x <= 0.55; x += 0.05){
-        for(calc_t y = 0.05; y <= 0.55; y += 0.05){
+    calc_t x = 0.05
+    while(x <= 0.55){
+        calc_t y = 0.05;
+        while(y <= 0.55){
             input_set[0] = x;
             input_set[1] = y;
             feed_forward(nn, input_set);
-            calc_t output = nn->layer[num_layers - 1]->node[0]->o;
-            DEBUG_PRINT(("Input: (%.2f, %.2f) => %.2e ", x, y, output));
-            DEBUG_PRINT(("Error = %.2e%\n", percent_error(sqrt(x + y), output)));
+            calc_t out = nn->layer[num_layers - 1]->node[0]->o;
+            DEBUG_PRINT(("Input: (%.2f, %.2f) => %.2e ", x, y, out));
+            DEBUG_PRINT(("Error = %.2e%\n", percent_error(sqrt(x + y), out)));
+            y += 0.05;
         }
+        x += 0.05;
     }
     free(nn); //free(input_sets); free(output);
     return 0;
