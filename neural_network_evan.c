@@ -4,8 +4,8 @@
 #include <sys/time.h>
 
 #define INPUTS 1
-#define H_LAYERS 1
-#define H_HEIGHT 10
+#define H_LAYERS 4
+#define H_HEIGHT 5
 #define OUTPUTS 1
 #define BIAS 1
 
@@ -256,9 +256,14 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
     //--------------------------------------------
 }
 
-void print_weights() {
+/*void print_weights() {
+    int i, j;
+    printf("input weights:\n")
+    for (i = 0; i < INPUTS * H_HEIGHT; i++) {
+        printf("%f  ", weights_in[i]);
+    }
 
-}
+}*/
 
 int main() {
     int i,j;
