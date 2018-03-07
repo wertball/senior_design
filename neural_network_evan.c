@@ -35,7 +35,8 @@ double ALPHA = 0.5;
 void randomize_array(int length, double arr[length]) {
     int i;
     for (i = 0; i < length; i++) {
-        arr[i] = ((rand() & 0b11) + 1) / ((rand() & 0xF) + 1);
+//        arr[i] = (rand() & 0b11) + 1;
+        arr[i] = 1.0f / ((rand() & 0xF) + 1);
         if ((rand() & 1) == 0) {
             arr[i] *= -1;
         }
