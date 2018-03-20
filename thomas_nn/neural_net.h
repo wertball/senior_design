@@ -62,11 +62,13 @@ void update_weights(Neural_Net *nn);
 calc_t find_total_error(calc_t desired, calc_t actual);
 calc_t percent_error(calc_t desired, calc_t actual);
 calc_t activate(calc_t x);
-calc_t* init_weights(int size);
+calc_t* init_weights(int size, calc_t bound);
 Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip);
-calc_t* init_outputs(calc_t** input_set, uint8_t set_size);
-calc_t** init_inputs(Input_Set_Params *isp);
-calc_t nn_normalize(calc_t input);
+calc_t normalize(calc_t input, calc_t min, calc_t max);
+calc_t denormalize(calc_t input, calc_t min, calc_t max);
+
+//help functions
+void printWeights(Neural_Net *nn);
 
 #endif
 
