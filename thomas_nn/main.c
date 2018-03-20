@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include <math.h>
 #include <errno.h>
+#include <omp.h>
 
 //Flags---------------------------------------------------------
 #define DEBUGGING //comment this flag to disable debug messages
@@ -40,13 +41,16 @@
 //Network Parameters--------------
 
 //File Locations------------------------------------------------------------------------
-#define file_base_directory "F:\\school\\ELEC4000\\senior_design\\gitRepo\\thomas_nn\\"
+#define file_base_directory "./"//"F:\\school\\ELEC4000\\senior_design\\gitRepo\\thomas_nn\\"
 #define test_output_file (file_base_directory"test_output.txt")
 #define error_results_file (file_base_directory"Error_Results.txt")
 #define test_results_file (file_base_directory"Test_Results.txt")
 //--------------------------------------------------------------------------------------
 
  int main(void){
+
+	omp_set_num_threads(4);
+
     FILE *fp;
 
     //network initialization parameters
@@ -148,7 +152,12 @@
         1.98702,
         1.70146,
         1.43822,
-        1.19831
+        1.19831,
+		0.992931,
+		0.826196,
+		0.701636,
+		0.612685,
+		0.549361
     };
     //--------------------------------------------------------------------------------------
 
@@ -230,13 +239,23 @@
     calc_t difference;
     calc_t test_error = 0;
 
+//	for(i = 0; i < training_set_size; i++){
+//		feed_forward(nn, input_sets[i]);
+//		calc_t out == nn->layer[numm_layers - 1]->node[0]->o;
+//        fprintf(fp,"%.2f, %.2f, ", denormalize(out, data_min, data_max), denormalized_test_output[i]);
+//        difference = denormalized_test_output[i] - denormalize(out, data_min, data_max);
+//        fprintf(fp,"Error = %.2f\n", difference);
+//        test_error += fabs(difference);
+//		
+//	}
+
      //test network
     for(i = 0; i < testing_set_size; i++){
         feed_forward(nn, test_input_sets[i]);
         calc_t out = nn->layer[num_layers - 1]->node[0]->o;
         fprintf(fp,"%.2f, %.2f, ", denormalize(out, data_min, data_max), denormalized_test_output[i]);
         difference = denormalized_test_output[i] - denormalize(out, data_min, data_max);
-        fprintf(fp,"Error = %.2f%\n", difference);
+        fprintf(fp,"Error = %.2f\n", difference);
         test_error += fabs(difference);
     }
     fclose(fp);

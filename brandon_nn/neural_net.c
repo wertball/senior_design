@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
+#include <stdio.h>
 
 Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip){
     //temp variables
@@ -20,6 +21,9 @@ Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip){
     nn->nw = 0;             //set number of weights to 0 as prep for running sum
     nn->lc  = nnip->lc;     //set learning constant
     nn->cte = 1.0;          //set current total error
+	//nn->data_min = nnip->data_min;
+	//nn->data_max = nnip->data_max;
+	//nn->data_range = nnip->data_range;
     //allocate layer pointer array memory
     nn->layer = malloc(sizeof(nn->layer) * nn->l);
 
@@ -117,7 +121,7 @@ calc_t* init_weights(int size){
     return arr;
 }
 
-void train_network(Neural_Net *nn, calc_t *input, calc_t output){
+calc_t train_network(Neural_Net *nn, calc_t *input, calc_t output){
 
     //(1) feed forward
     feed_forward(nn, input);
@@ -127,6 +131,8 @@ void train_network(Neural_Net *nn, calc_t *input, calc_t output){
     backpropagate(nn, output);
     //(4) assign new weights
     update_weights(nn);
+
+	return nn->cte;
 }
 
 void feed_forward(Neural_Net *nn, calc_t *input){
@@ -157,7 +163,7 @@ void feed_forward(Neural_Net *nn, calc_t *input){
     for(j = 0; j < l->nn; j++){
         for(sum = 0, k = 0; k < pl->nn; k++)
             sum +=  pl->node[k]->o * pl->node[k]->cw[j];
-        l->node[j]->o = sum;
+        l->node[j]->o = nn_normalize(sum);
     }
 }
 
@@ -232,6 +238,10 @@ calc_t activate(calc_t x){
 
 calc_t percent_error(calc_t desired, calc_t actual){
     return fabs((actual - desired) / desired * (calc_t)100.0);
+}
+
+calc_t nn_normalize(calc_t input){
+	return (input - 0.549361) / (3.43917 - 0.549361);
 }
 
 calc_t* init_outputs(calc_t** input_set, uint8_t set_size){

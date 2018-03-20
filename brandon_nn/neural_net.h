@@ -31,6 +31,9 @@ struct Neural_Nets{
     calc_t lc;          //learning constant
     calc_t cte;         //current total error on network
     Layer **layer;      //array of network layer addresses
+	//calc_t data_min;
+	//calc_t data_max;
+	//calc_t data_range;
 };
 
 typedef struct Neural_Net_Init_Parameters Neural_Net_Init_Params;
@@ -38,6 +41,9 @@ struct Neural_Net_Init_Parameters{
 	uint8_t l;          //number of layers, [3:255]
     uint8_t *dim;       //dimensions of neural networ
     calc_t lc;          //learning constant
+	//calc_t data_min;
+	//calc_t data_max;
+	//calc_t data_range;
 };
 
 typedef struct Input_Set_Parameters Input_Set_Params;
@@ -49,7 +55,7 @@ struct Input_Set_Parameters{
     calc_t step_size;       //step size between min and max values
 };
 
-void train_network(Neural_Net *nn, calc_t *input, calc_t output);
+calc_t train_network(Neural_Net *nn, calc_t *input, calc_t output);
 void feed_forward(Neural_Net *nn, calc_t *input);
 void backpropagate(Neural_Net *nn, calc_t output);
 void update_weights(Neural_Net *nn);
@@ -60,6 +66,7 @@ calc_t* init_weights(int size);
 Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip);
 calc_t* init_outputs(calc_t** input_set, uint8_t set_size);
 calc_t** init_inputs(Input_Set_Params *isp);
+calc_t nn_normalize(calc_t input);
 
 #endif
 
