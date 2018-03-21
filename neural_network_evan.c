@@ -8,7 +8,7 @@
 #define H_LAYERS 3
 #define H_HEIGHT 20
 #define OUTPUTS 1
-#define BIAS 0
+#define BIAS 1
 
 #define DATA_MIN 0
 #define DATA_MAX 300
@@ -146,7 +146,7 @@ void forward(double in[INPUTS]) {
         //outputs[i] = normalize(outputs[i]);
 
         //Activation
-        //outputs[i] = activation(outputs[i]);
+        outputs[i] = activation(outputs[i]);
         //printf("Output %d: %f\n", i, outputs[i]);
     }
     //-----------------------------------
@@ -167,7 +167,7 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
     //Output layer------------------------------
     for (i = 0; i < OUTPUTS; i++) {
-        deltas_o[i] = (outputs[i] - target_out[i]);
+        deltas_o[i] = (outputs[i] * (1 - outputs[i])) * (outputs[i] - target_out[i]);
         for (j = 0; j < H_HEIGHT; j++) {
             weights_out_new[(i * H_HEIGHT) + j] = weights_out[(i * H_HEIGHT) + j] -
                     (ALPHA * deltas_o[i] * h_out[H_LAYERS - 1][j]);
@@ -282,7 +282,7 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
 
 int read_training_set(char *file_name, double ***training_in, double **training_out) {
-    int i, j, lines, current_line;
+    int i, j, samples, current_line;
     double **t_in, *t_out;
     char temp_str[100];
     char *pointer;
@@ -296,14 +296,14 @@ int read_training_set(char *file_name, double ***training_in, double **training_
         return -1;
     }
 
-    //count number of lines with data
-    lines = 0;
+    //count number of samples
+    samples = 0;
     while (fgets(temp_str, 100, fp) != NULL) {
         if (strlen(temp_str) > 2) {
-            lines++;
+            samples++;
         }
     }
-    if (lines == 0) {
+    if (samples == 0) {
         printf("Error: No data in %s\n", file_name);
         fflush(stdout);
         return -1;
@@ -311,11 +311,11 @@ int read_training_set(char *file_name, double ***training_in, double **training_
     rewind(fp);
 
     //Allocate training arrays
-    t_in = (double **) malloc(lines * sizeof(double *));
-    for (i = 0; i < lines; i++) {
+    t_in = (double **) malloc(samples * sizeof(double *));
+    for (i = 0; i < samples; i++) {
         t_in[i] = (double *) malloc(INPUTS * sizeof(double));
     }
-    t_out = (double *) malloc(lines * sizeof(double));
+    t_out = (double *) malloc(samples * sizeof(double));
     *training_in = t_in;
     *training_out = t_out;
 
@@ -348,28 +348,29 @@ int read_training_set(char *file_name, double ***training_in, double **training_
     }
     //close file
     fclose(fp);
-    return lines;
+    return samples;
 }
 
 #define SAMPLES 10
 int main() {
-    int i,j, lines;
+    int i, j, k;
+    int samples;
     unsigned long int it = 0;
     struct timeval t1, t2;
     double **training_in, *training_out;
-//    double training_in[] = {0.1};
-//    double training_out[] = {0.9};
     double error;
-    /*double training_in[SAMPLES][2], training_out[SAMPLES];
-    for (i = 0; i < SAMPLES; i++) {
-        training_in[i][0] = normalize(11-i);
-        training_in[i][1] = normalize(i);
-        training_out[i] = normalize(((11-i) * (11-i)) + (i * i));
-    }*/
+
+    //Z = X^2 + Y^2
+    //double training_in[SAMPLES][2], training_out[SAMPLES];
+    //for (i = 0; i < SAMPLES; i++) {
+    //    training_in[i][0] = normalize(11-i);
+    //    training_in[i][1] = normalize(i);
+    //    training_out[i] = normalize(((11-i) * (11-i)) + (i * i));
+    //}
 
 
-    lines = read_training_set(DATA_FILE, &training_in, &training_out);
-    if (lines <= 0) {
+    samples = read_training_set(DATA_FILE, &training_in, &training_out);
+    if (samples <= 0) {
         return 1;
     }
     initialize();
@@ -379,16 +380,26 @@ int main() {
     error = 1;
     while (error > 1E-10) {
         error = 0;
-        for (i = 0; i < lines; i++) {
+
+        //Forward and back for each sample
+        for (i = 0; i < samples; i++) {
             forward(training_in[i]);
-            error += 0.5 * ((training_out[i] - outputs[0]) * (training_out[i] - outputs[0]));
+            error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
             backpropagation(training_in[i], &training_out[i]);
         }
-        error /= lines;
-        if ((it & 0x7FFFF) == 0) {
-            for (j = 0; j < lines; j++) {
+        error /= samples;
+
+        //Debug prints
+        if ((it & 0xFFFF) == 0) {
+            for (j = 0; j < samples; j++) {
                 forward(training_in[j]);
-                printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n", denormalize(training_in[j][0]), denormalize(training_in[j][1]), denormalize(training_in[j][2]), denormalize(training_in[j][3]), denormalize(training_in[j][4]), denormalize(outputs[0]));
+                printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
+                       denormalize(training_in[j][0]),
+                       denormalize(training_in[j][1]),
+                       denormalize(training_in[j][2]),
+                       denormalize(training_in[j][3]),
+                       denormalize(training_in[j][4]),
+                       denormalize(outputs[0]));
             }
             printf("Iteration: %lu\n", it);
             printf("Total Error: %.3e\n", error);
@@ -397,20 +408,49 @@ int main() {
         it++;
         //printf("Iteration:%lu  Error:%12.10f\n", it++, error);
     }
+
+    //while (error > 1E-6) {
+    //    error = 0;
+    //    for (i = 0; i < SAMPLES; i++) {
+    //        forward(training_in[i]);
+    //        error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
+    //        backpropagation(training_in[i], &training_out[i]);
+    //    }
+    //    error /= SAMPLES;
+    //    if ((it & 0xFFFF) == 0) {
+    //        for (j = 0; j < SAMPLES; j++) {
+    //            forward(training_in[j]);
+    //            for (k = 0; k < INPUTS; k++) {
+    //                printf("%f ", denormalize(training_in[j][k]));
+    //            }
+    //            printf("%f\n", denormalize(outputs[0]));
+    //        }
+    //        printf("Iteration: %lu\n", it);
+    //        printf("Total Error: %.3e\n", error);
+    //        fflush(stdout);
+    //    }
+    //    it++;
+    //}
     gettimeofday(&t2, NULL);
     printf("Training time: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
     printf("Iterations: %lu\n", it);
 
     error = 0;
-    for (i = 0; i < lines; i++) {
+    for (i = 0; i < samples; i++) {
         forward(training_in[i]);
-        error += 0.5 * ((training_out[i] - outputs[0]) * (training_out[i] - outputs[0]));
-        printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n", denormalize(training_in[i][0]), denormalize(training_in[i][1]), denormalize(training_in[i][2]), denormalize(training_in[i][3]), denormalize(training_in[i][4]), denormalize(outputs[0]));
+        error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
+        printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
+               denormalize(training_in[i][0]),
+               denormalize(training_in[i][1]),
+               denormalize(training_in[i][2]),
+               denormalize(training_in[i][3]),
+               denormalize(training_in[i][4]),
+               denormalize(outputs[0]));
     }
-    printf("Total Error: %.3e\n", error / lines);
+    printf("Total Error: %.3e\n", error / samples);
 
     //LET MY ARRAYS GO
-    for (i = 0; i < lines; i++) {
+    for (i = 0; i < samples; i++) {
         free(training_in[i]);
     }
     free(training_in);
