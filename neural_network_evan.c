@@ -3,9 +3,10 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <string.h>
+#include <float.h>
 
 #define INPUTS 5
-#define H_LAYERS 3
+#define H_LAYERS 5
 #define H_HEIGHT 20
 #define OUTPUTS 1
 #define BIAS 1
@@ -14,7 +15,6 @@
 #define DATA_MAX 300
 #define DATA_RANGE (DATA_MAX - DATA_MIN)
 #define DATA_FILE "data_for_training.txt"
-
 
 //Weight declarations
 double weights_in[INPUTS * H_HEIGHT];// = {.15,.20};
@@ -32,7 +32,7 @@ double h_out[H_LAYERS][H_HEIGHT];
 double outputs[OUTPUTS];
 
 //Learning declarations
-double ALPHA = .2;
+double ALPHA = .5;
 
 //Randomization functions----------------------
 void randomize_array(int length, double arr[length]) {
@@ -81,6 +81,15 @@ static inline double normalize(double input) {
 
 static inline double denormalize(double input) {
     return (DATA_RANGE * input) + DATA_MIN;
+}
+
+double OUTPUT_MIN = DBL_MAX, OUTPUT_MAX = DBL_MIN;
+static inline double o_normalize(double input) {
+    return (input - OUTPUT_MIN) / (OUTPUT_MAX - OUTPUT_MIN);
+}
+
+static inline double o_denormalize(double input) {
+    return ((OUTPUT_MAX - OUTPUT_MIN) * input) + OUTPUT_MIN;
 }
 //--------------------------------------------
 
@@ -341,13 +350,25 @@ int read_training_set(char *file_name, double ***training_in, double **training_
                 return -1;
             }
             sscanf(pointer, "%lf", &t_out[i]);
-            t_out[i] = normalize(t_out[i]);
+            if (t_out[i] < OUTPUT_MIN) {
+                OUTPUT_MIN = t_out[i];
+            }
+            if (t_out[i] > OUTPUT_MAX) {
+                OUTPUT_MAX = t_out[i];
+            }
+            //t_out[i] = normalize(t_out[i]);
             i++;
         }
         current_line++;
     }
     //close file
     fclose(fp);
+
+    //Normalize outputs
+    for (i = 0; i < samples; i++) {
+        t_out[i] = o_normalize(t_out[i]);
+    }
+
     return samples;
 }
 
@@ -378,7 +399,7 @@ int main() {
 
     gettimeofday(&t1, NULL);
     error = 1;
-    while (error > 1E-10) {
+    while (error > 1E-6) {
         error = 0;
 
         //Forward and back for each sample
@@ -399,7 +420,7 @@ int main() {
                        denormalize(training_in[j][2]),
                        denormalize(training_in[j][3]),
                        denormalize(training_in[j][4]),
-                       denormalize(outputs[0]));
+                       o_denormalize(outputs[0]));
             }
             printf("Iteration: %lu\n", it);
             printf("Total Error: %.3e\n", error);
@@ -445,7 +466,7 @@ int main() {
                denormalize(training_in[i][2]),
                denormalize(training_in[i][3]),
                denormalize(training_in[i][4]),
-               denormalize(outputs[0]));
+               o_denormalize(outputs[0]));
     }
     printf("Total Error: %.3e\n", error / samples);
 
