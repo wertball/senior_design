@@ -3,6 +3,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <stdio.h>
+#include <omp.h>
 
 Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip){
     //temp variables
@@ -139,6 +140,7 @@ void feed_forward(Neural_Net *nn, calc_t *input){
 
     //-----------------------input layer----------------------
     l = nn->layer[0];
+	#pragma omp parallel for private(i)
     for(i = 0; i < l->nn; i++){
         l->node[i]->o = input[i];
     }
@@ -147,6 +149,7 @@ void feed_forward(Neural_Net *nn, calc_t *input){
     for(i = 1; i < (nn->l - 1); i++){
         l = nn->layer[i];
         pl = l->prev;
+		#pragma omp parallel for private(j,k,sum)
         for(j = 0; j < l->nn; j++){
             for(sum = 0, k = 0; k < pl->nn; k++)
                 sum +=  pl->node[k]->o * pl->node[k]->cw[j];
@@ -157,6 +160,7 @@ void feed_forward(Neural_Net *nn, calc_t *input){
     //-----------------------output layer----------------------
     l = nn->layer[nn->l-1];
     pl = l->prev;
+	#pragma omp parallel for private(j,k,sum)
     for(j = 0; j < l->nn; j++){
         for(sum = 0, k = 0; k < pl->nn; k++)
             sum +=  pl->node[k]->o * pl->node[k]->cw[j];
@@ -185,6 +189,7 @@ void backpropagate(Neural_Net *nn, calc_t output) {
         delta = (cl->node[i]->o - output) * (1); //delta = (dE/dno)(dno/dni)
         cl->node[i]->d = delta;
         //update previous layer nodes
+        #pragma omp parallel for private(j,dw)
         for (j = 0; j < pl->nn; j++) {              //for every node in previous layer
             Node *pln = pl->node[j];
             dw = delta * pln->o;                    //dw = (delta)(node output)

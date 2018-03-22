@@ -5,7 +5,6 @@
 #include <sys/time.h>
 #include <math.h>
 #include <errno.h>
-#include <omp.h>
 
 //Flags---------------------------------------------------------
 #define DEBUGGING //comment this flag to disable debug messages
@@ -28,8 +27,8 @@
 #define num_layers 5
 #define learning_rate 0.2
 #define training_iterations 1e7
-#define target_error 1e-6
-#define data_min 0.549361
+#define target_error 5e-2
+#define data_min 0.520171
 #define data_max 3.43917
 
 #define training_set_size 55
@@ -48,8 +47,6 @@
 //--------------------------------------------------------------------------------------
 
  int main(void){
-
-	omp_set_num_threads(4);
 
     FILE *fp;
 
@@ -208,24 +205,45 @@
         printf("Failed to write %s\nerrno: %d\n", error_results_file, errno);
 
     //train the network
-    int i;
+    int i, j;
     struct timeval t1, t2;
     //fprintf(fp,"Iterations\t\t\tError\n");
     gettimeofday(&t1, NULL);
     calc_t error = 1.0;
     calc_t error_1 = 0.0;
-    for(i = 0; i < training_iterations && error > target_error; i++) {
-        error = 0.0;
+    //for(i = 0; i < training_iterations && error > target_error; i++) {
+    //    error = 0.0;
         //fprintf(fp,"%d: ",i);
-        for(int j = 0; j < training_set_size; j++) {
-            error_1 = train_network(nn, input_sets[j], output[j]);      //train_network() can be replaced w/individual function calls
-            //fprintf(fp,"%d\t%.2e\n",i*training_set_size+j,error_1);
-            error += error_1;
-        }
-        error = error/training_set_size;
-        fprintf(fp,"%d\t%.2e\n",i,error);
-        //fprintf(fp,"%.2e\n",error);
-    }
+    //    for(int j = 0; j < training_set_size; j++) {
+    //        error_1 = train_network(nn, input_sets[j], output[j]);      //train_network() can be replaced w/individual function calls
+    //        //fprintf(fp,"%d\t%.2e\n",i*training_set_size+j,error_1);
+    //        error += error_1;
+    //    }
+    //    error = error/training_set_size;
+    //    fprintf(fp,"%d\t%.2e\n",i,error);
+    //    //fprintf(fp,"%.2e\n",error);
+    //}
+    
+	//train using percent error calculation--------------------------
+	for(i =0; i < training_iterations && error > target_error; i++){
+		error = 0.0;
+		for(j = 0; j < training_set_size; j++){
+			//training
+			feed_forward(nn,input_sets[j]);
+			nn->cte = find_total_error(output[j], nn->layer[nn->l-1]->node[0]->o);
+			backpropagate(nn, output[j]);
+			update_weights(nn);
+			//determining percent error
+			error_1 = percent_error(output[j], nn->layer[nn->l-1]->node[0]->o);
+			//printf("%d\nparameters: %f, %f\n", j, output[j], nn->layer[nn->l-1]->node[0]->o);
+			//printf("error_1: %f\n", error_1);
+			error += error_1;	
+		}
+		error /= training_set_size;
+		fprintf(fp,"%d\t%.2e\n",i,error); 
+	}
+	//---------------------------------------------------------------
+
     gettimeofday(&t2, NULL);
     fclose(fp);
     printf("execution time(s): %.4f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
@@ -254,9 +272,9 @@
         feed_forward(nn, test_input_sets[i]);
         calc_t out = nn->layer[num_layers - 1]->node[0]->o;
         fprintf(fp,"%.2f, %.2f, ", denormalize(out, data_min, data_max), denormalized_test_output[i]);
-        difference = denormalized_test_output[i] - denormalize(out, data_min, data_max);
-        fprintf(fp,"Error = %.2f\n", difference);
-        test_error += fabs(difference);
+        error = percent_error(denormalized_test_output[i], denormalize(out, data_min, data_max));
+        fprintf(fp,"Error = %.2f\n", error);
+        test_error += error;
     }
     fclose(fp);
     printf("Test Error: %e\n", test_error/testing_set_size);
