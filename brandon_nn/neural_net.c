@@ -53,7 +53,7 @@ Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip){
         n->o = 0;                       //set output of node to 0
         n->d = 0;                       //set delta of node to 0
         n->cw = init_weights(n->nw, 1); //cw = nw size array of random weights
-        n->uw = n->cw;                  //uw = cw
+        n->uw = init_weights(n->nw, 0); //uw = cw
     }
 
     //-------------------------------hidden layers-------------------------------
@@ -75,7 +75,7 @@ Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip){
             n->o = 1;                          //set output of node to 0
             n->d = 3;                          //set delta of node to 0
             n->cw = init_weights(n->nw, 1);    //cw = nw size array of random weights
-            n->uw = n->cw;                     //uw = cw
+            n->uw = init_weights(n->nw, 0);    //uw = cw
         }
     }
 
@@ -107,10 +107,12 @@ calc_t* init_weights(int size, calc_t bound){
     //randomize array with values between range [0, upper bound]
     for(int i = 0; i < size; i++){
         calc_t sum = 0;
-        if(rand() >= RAND_MAX / 2)
-            sum += (calc_t)rand()/(calc_t)(RAND_MAX/bound);
-        else
-            sum -= (calc_t)rand()/(calc_t)(RAND_MAX/bound);
+        if(bound){
+            if (rand() >= RAND_MAX / 2)
+                sum += (calc_t) rand() / (calc_t) (RAND_MAX / bound);
+            else
+                sum -= (calc_t) rand() / (calc_t) (RAND_MAX / bound);
+        }
         arr[i] = sum;
     }
     return arr;
@@ -124,7 +126,7 @@ calc_t train_network(Neural_Net *nn, calc_t *input, calc_t output){
     //(3) backpropagate
     backpropagate(nn, output);
     //(4) assign new weights
-    update_weights(nn);
+    update_weights(nn, 1);
 
     return nn->cte;
 }
@@ -136,7 +138,6 @@ void feed_forward(Neural_Net *nn, calc_t *input){
 
     //-----------------------input layer----------------------
     l = nn->layer[0];
-#pragma omp parallel for private(i)
     for(i = 0; i < l->nn; i++){
         l->node[i]->o = input[i];
     }
@@ -145,7 +146,6 @@ void feed_forward(Neural_Net *nn, calc_t *input){
     for(i = 1; i < (nn->l - 1); i++){
         l = nn->layer[i];
         pl = l->prev;
-#pragma omp parallel for private(j,k,sum)
         for(j = 0; j < l->nn; j++){
             for(sum = 0, k = 0; k < pl->nn; k++)
                 sum +=  pl->node[k]->o * pl->node[k]->cw[j];
@@ -156,7 +156,6 @@ void feed_forward(Neural_Net *nn, calc_t *input){
     //-----------------------output layer----------------------
     l = nn->layer[nn->l-1];
     pl = l->prev;
-#pragma omp parallel for private(j,k,sum)
     for(j = 0; j < l->nn; j++){
         for(sum = 0, k = 0; k < pl->nn; k++)
             sum +=  pl->node[k]->o * pl->node[k]->cw[j];
@@ -174,8 +173,8 @@ void backpropagate(Neural_Net *nn, calc_t output) {
             lc = nn->lc; //learning constant
     int i, j;   //iterators
     Layer *pl,  //previous layer pointer
-            *cl,  //current layer pointer
-            *nl;  //next layer pointer
+          *cl,  //current layer pointer
+          *nl;  //next layer pointer
 
     //-------------------------output layer------------------------------
     cl = nn->layer[nn->l - 1];      //current layer = output layer
@@ -185,11 +184,10 @@ void backpropagate(Neural_Net *nn, calc_t output) {
         delta = (cl->node[i]->o - output) * (1); //delta = (dE/dno)(dno/dni)
         cl->node[i]->d = delta;
         //update previous layer nodes
-#pragma omp parallel for private(j,dw)
-        for (j = 0; j < pl->nn; j++) {              //for every node in previous layer
+        for (j = 0; j < pl->nn; j++) {  //for every node in previous layer
             Node *pln = pl->node[j];
-            dw = delta * pln->o;                    //dw = (delta)(node output)
-            pln->uw[i] = pln->cw[i] - lc * dw;      //formula for new update weight
+            dw = delta * pln->o;        //dw = (delta)(node output)
+            pln->uw[i] += lc * dw;      //formula for new update weight
         }
     }
 
@@ -209,10 +207,10 @@ void backpropagate(Neural_Net *nn, calc_t output) {
             }
             cln->d = delta;
             //update previous layer nodes
-            for (j = 0; j < pl->nn; j++) {          //for every node in previous layer
+            for (j = 0; j < pl->nn; j++) {  //for every node in previous layer
                 Node *pln = pl->node[j];
-                dw = delta * pln->o;                //dw = (delta)(node output)
-                pln->uw[i] = pln->cw[i] - lc * dw;  //formula for new update weight
+                dw = delta * pln->o;        //dw = (delta)(node output)
+                pln->uw[i] += lc * dw;      //formula for new update weight
             }
         }
         nl = cl;        //next layer = current layer -> next
@@ -221,11 +219,14 @@ void backpropagate(Neural_Net *nn, calc_t output) {
     }
 }
 
-void update_weights(Neural_Net *nn){
+void update_weights(Neural_Net *nn, uint16_t number_of_test_samples){
     for(Layer* l = nn->layer[0]; l != NULL; l = l->next){
         for(int i = 0; i < l->nn; i++){
             Node* n = l->node[i];
-            n->cw = n->uw;
+            for(int j = 0; j < n->nw; j++) {
+                n->cw[j] -= n->uw[j] / (calc_t) number_of_test_samples;
+                n->uw[j] = 0;
+            }
         }
     }
 }

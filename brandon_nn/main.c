@@ -42,9 +42,6 @@
 //--------------------------------------------------------------------------------------
 
 int main(void){
-
-	FILE *fp;
-
 	//network initialization parameters
 	uint8_t dim[num_layers] = {
 			set_input_size,  //layer 1, input layer
@@ -79,8 +76,6 @@ int main(void){
 		input_sets[i][2] = denormalized_input_sets[i][2] / 300.0;
 		input_sets[i][3] = (denormalized_input_sets[i][3] - 80.0) / (120.0 - 80.0);
 		input_sets[i][4] = (denormalized_input_sets[i][4] - 1.79) / (1.89 - 1.79);
-		//for(int j = 0; j < set_input_size; j++i)
-		//	input_sets[i][j] = normalize(denormalized_input_sets[i][j]);
 	}
 	//-------------------------------------------------------------------------------------
 
@@ -166,6 +161,7 @@ int main(void){
 
 	float t0;
 	float denormalized_test_output[testing_set_size];
+    FILE *fp;
 
 	fp = fopen(test_output_file,"r");
 	if(fp == NULL)
@@ -206,14 +202,13 @@ int main(void){
 			feed_forward(nn,input_sets[j]);
 			nn->cte = find_total_error(output[j], nn->layer[nn->l-1]->node[0]->o);
 			backpropagate(nn, output[j]);
-			//update_weights(nn);
 			//determining percent error
 			error_1 = percent_error(output[j], nn->layer[nn->l-1]->node[0]->o);
 			//printf("%d\nparameters: %f, %f\n", j, output[j], nn->layer[nn->l-1]->node[0]->o);
 			//printf("error_1: %f\n", error_1);
 			error += error_1;
 		}
-        //update_weights(nn, training_set_size)
+        update_weights(nn, training_set_size);
 		error /= training_set_size;
 		fprintf(fp,"%d\t%.2e\n",i,error);
 	}

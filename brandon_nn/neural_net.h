@@ -43,7 +43,7 @@ struct Neural_Net_Init_Parameters{
 calc_t train_network(Neural_Net *nn, calc_t *input, calc_t output);
 void feed_forward(Neural_Net *nn, calc_t *input);
 void backpropagate(Neural_Net *nn, calc_t output);
-void update_weights(Neural_Net *nn);
+void update_weights(Neural_Net *nn, uint16_t number_of_test_samples);
 calc_t find_total_error(calc_t desired, calc_t actual);
 calc_t percent_error(calc_t desired, calc_t actual);
 calc_t activate(calc_t x);
