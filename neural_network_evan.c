@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <string.h>
+#include <float.h>
 
 #define INPUTS 5
 #define H_LAYERS 3
@@ -10,11 +11,7 @@
 #define OUTPUTS 1
 #define BIAS 1
 
-#define DATA_MIN 0
-#define DATA_MAX 300
-#define DATA_RANGE (DATA_MAX - DATA_MIN)
 #define DATA_FILE "data_for_training.txt"
-
 
 //Weight declarations
 double weights_in[INPUTS * H_HEIGHT];// = {.15,.20};
@@ -32,7 +29,7 @@ double h_out[H_LAYERS][H_HEIGHT];
 double outputs[OUTPUTS];
 
 //Learning declarations
-double ALPHA = .2;
+double ALPHA = .5;
 
 //Randomization functions----------------------
 void randomize_array(int length, double arr[length]) {
@@ -75,12 +72,12 @@ static inline double activation(double input) {
 }
 
 //Normalization functions--------------------
-static inline double normalize(double input) {
-    return (input - DATA_MIN) / (DATA_RANGE);
+static inline double normalize(double input, double min, double max) {
+    return (input - min) / (max - min);
 }
 
-static inline double denormalize(double input) {
-    return (DATA_RANGE * input) + DATA_MIN;
+static inline double denormalize(double input, double min, double max) {
+    return ((max - min) * input) + min;
 }
 //--------------------------------------------
 
@@ -281,9 +278,9 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
 
 
-int read_training_set(char *file_name, double ***training_in, double **training_out) {
+int read_training_set(char *file_name, double ***training_in, double **training_out, double ***data_range) {
     int i, j, samples, current_line;
-    double **t_in, *t_out;
+    double **t_in, *t_out, **d_range;
     char temp_str[100];
     char *pointer;
     FILE *fp;
@@ -310,14 +307,21 @@ int read_training_set(char *file_name, double ***training_in, double **training_
     }
     rewind(fp);
 
-    //Allocate training arrays
+    //Allocate arrays
     t_in = (double **) malloc(samples * sizeof(double *));
+    d_range = (double **) malloc((INPUTS + 1) * sizeof(double *));
     for (i = 0; i < samples; i++) {
         t_in[i] = (double *) malloc(INPUTS * sizeof(double));
+    }
+    for (i = 0; i < (INPUTS + 1); i++) {
+        d_range[i] = (double *) malloc(2 * sizeof(double));
+        d_range[i][0] = DBL_MAX;
+        d_range[i][1] = DBL_MIN;
     }
     t_out = (double *) malloc(samples * sizeof(double));
     *training_in = t_in;
     *training_out = t_out;
+    *data_range = d_range;
 
     //Get data from file
     i = 0;
@@ -332,7 +336,12 @@ int read_training_set(char *file_name, double ***training_in, double **training_
                     return -1;
                 }
                 sscanf(pointer, "%lf", &t_in[i][j]);
-                t_in[i][j] = normalize(t_in[i][j]);
+                if (t_in[i][j] < d_range[j][0]) {
+                    d_range[j][0] = t_in[i][j];
+                }
+                if (t_in[i][j] > d_range[j][1]) {
+                    d_range[j][1] = t_in[i][j];
+                }
                 pointer = strtok(NULL, "\t");
             }
             if (pointer == NULL) {
@@ -341,13 +350,33 @@ int read_training_set(char *file_name, double ***training_in, double **training_
                 return -1;
             }
             sscanf(pointer, "%lf", &t_out[i]);
-            t_out[i] = normalize(t_out[i]);
+            if (t_out[i] < d_range[INPUTS][0]) {
+                d_range[INPUTS][0] = t_out[i];
+            }
+            if (t_out[i] > d_range[INPUTS][1]) {
+                d_range[INPUTS][1] = t_out[i];
+            }
+            //t_out[i] = normalize(t_out[i]);
             i++;
         }
         current_line++;
     }
     //close file
     fclose(fp);
+
+    //Normalize
+    for (i = 0; i < samples; i++) {
+        for (j = 0; j < INPUTS; j++) {
+            if (d_range[j][0] == d_range[j][1]) {
+                t_in[i][j] = 1;
+            }
+            else {
+                t_in[i][j] = normalize(t_in[i][j], d_range[j][0], d_range[j][1]);
+            }
+        }
+        t_out[i] = normalize(t_out[i], d_range[INPUTS][0], d_range[INPUTS][1]);
+    }
+
     return samples;
 }
 
@@ -357,7 +386,7 @@ int main() {
     int samples;
     unsigned long int it = 0;
     struct timeval t1, t2;
-    double **training_in, *training_out;
+    double **training_in, *training_out, **data_range;
     double error;
 
     //Z = X^2 + Y^2
@@ -369,7 +398,7 @@ int main() {
     //}
 
 
-    samples = read_training_set(DATA_FILE, &training_in, &training_out);
+    samples = read_training_set(DATA_FILE, &training_in, &training_out, &data_range);
     if (samples <= 0) {
         return 1;
     }
@@ -378,7 +407,7 @@ int main() {
 
     gettimeofday(&t1, NULL);
     error = 1;
-    while (error > 1E-10) {
+    while (error > 1E-6) {
         error = 0;
 
         //Forward and back for each sample
@@ -394,12 +423,12 @@ int main() {
             for (j = 0; j < samples; j++) {
                 forward(training_in[j]);
                 printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
-                       denormalize(training_in[j][0]),
-                       denormalize(training_in[j][1]),
-                       denormalize(training_in[j][2]),
-                       denormalize(training_in[j][3]),
-                       denormalize(training_in[j][4]),
-                       denormalize(outputs[0]));
+                       denormalize(training_in[j][0], data_range[0][0], data_range[0][1]),
+                       denormalize(training_in[j][1], data_range[1][0], data_range[1][1]),
+                       denormalize(training_in[j][2], data_range[2][0], data_range[2][1]),
+                       denormalize(training_in[j][3], data_range[3][0], data_range[3][1]),
+                       denormalize(training_in[j][4], data_range[4][0], data_range[4][1]),
+                       denormalize(outputs[0], data_range[5][0], data_range[5][1]));
             }
             printf("Iteration: %lu\n", it);
             printf("Total Error: %.3e\n", error);
@@ -440,12 +469,12 @@ int main() {
         forward(training_in[i]);
         error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
         printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
-               denormalize(training_in[i][0]),
-               denormalize(training_in[i][1]),
-               denormalize(training_in[i][2]),
-               denormalize(training_in[i][3]),
-               denormalize(training_in[i][4]),
-               denormalize(outputs[0]));
+               denormalize(training_in[i][0], data_range[0][0], data_range[0][1]),
+               denormalize(training_in[i][1], data_range[1][0], data_range[1][1]),
+               denormalize(training_in[i][2], data_range[2][0], data_range[2][1]),
+               denormalize(training_in[i][3], data_range[3][0], data_range[3][1]),
+               denormalize(training_in[i][4], data_range[4][0], data_range[4][1]),
+               denormalize(outputs[0], data_range[5][0], data_range[5][1]));
     }
     printf("Total Error: %.3e\n", error / samples);
 
