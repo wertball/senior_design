@@ -12,8 +12,10 @@
 #define NORMALIZE
 
 #ifdef NORMALIZE
-#define data_min 0.0
-#define data_max 105.0
+#define data_min -2.0
+#define data_max 49.0
+#define normalized_min 0.0
+#define normalized_max 1.0
 #endif
 
 //#define MOMENTUM
@@ -32,10 +34,10 @@ float bias[H];
 #endif
 
 float training_set_input[training_set_size] = {1,3,5,7,9};
-float training_set_target[training_set_size] = {7,19,39,67,103};
+float training_set_target[training_set_size] = {0,0,8,24,48};
 
 float testing_set_input[testing_set_size] = {2,4,6,8};
-float testing_set_target[testing_set_size] = {12,28,52,84};
+float testing_set_target[testing_set_size] = {-1,3,15,35};
 
 float feed_fwd(float x);
 float deactivate(float y);

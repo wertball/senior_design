@@ -17,7 +17,7 @@ main(){
 	//	output_bit[i] = output[i] / 256.0;
 	//}
 	error_one = 0;
-	error_two = 100;
+	error_two = 0;
 
 	initialize();
 
@@ -41,27 +41,28 @@ main(){
 #endif
 #endif
 
-
+	printf("Iteration\t\tError\n");
 	for(i = 0; i < 1000000; i++){
 		error_one = 0;
 		for(j = 0; j < training_set_size; j++){
 			error = train_network(training_set_input[j], training_set_target[j]);
 			error_one += error;
 		}
-		if((error_one / training_set_size) < error_two){
-			error_two = error_one;
-			run = i;
-		}
-		if((error_one / training_set_size) < .000001)
+		error_two = error_one / training_set_size;
+		printf("%d\t\t%f\n",i,error_two);
+		if(error_two < .000001)
 			break;
 	}
 
-	printf("The total error is %f after %d runs\n", error_one, i);
-	printf("The lowest error found was %f at run %d\n", error_two, run);
+	printf("\n\nThe total error is %f after %d runs\n", error_one, i);
+	//printf("The lowest error found was %f at run %d\n", error_two, run);
 
+	error_one = 0;
 	for(j = 0; j < training_set_size; j++){
 		last = feed_fwd(training_set_input[j]);
-		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",training_set_input[j],last,training_set_target[j],last-training_set_target[j]);
+		error = find_total_error(training_set_target[j], last);
+		printf("%f %f %f %f\n",training_set_input[j],last,training_set_target[j],last-training_set_target[j]);
+		error_one += error;
 #ifdef DEBUG_MODE
 		printf("The outputs are: \n");
 		for(k = 0; k < H; k++){
@@ -70,18 +71,19 @@ main(){
 		printf("\n");
 #endif
 	}
+	printf("%f\n",error_one/training_set_size);
 
 	printf("\n");
 	error_one = 0;
 	for(j = 0; j < testing_set_size; j++){
 		last = feed_fwd(testing_set_input[j]);
 		error = find_total_error(testing_set_target[j], last);
-		printf("With an input of %f, the output is %f, the desired output is %f, the difference is %f\n",testing_set_input[j],last,testing_set_target[j],last - testing_set_target[j]);
+		printf("%f %f %f %f\n",testing_set_input[j],last,testing_set_target[j],last - testing_set_target[j]);
 		error_one += error;
 	}
-	printf("The total error of the testing set is %f\n", error_one/testing_set_size);
+	printf("%f\n", error_one/testing_set_size);
 
-#ifdef DEBUG_MODE
+//#ifdef DEBUG_MODE
 	printf("The final weights are: \n");
 	for(k = 0; k < L-1; k++){
 		for(j = 0; j < H; j++)
@@ -95,7 +97,7 @@ main(){
 		printf("%f ",bias[k]);
 	printf("\n");
 #endif
-#endif
+//#endif
 
 }
 
@@ -129,7 +131,7 @@ float feed_fwd(float x){
 #ifdef NORMALIZE
 	x = normalize(x);
 #endif
-	input = x;
+	input = (x);
 
 	//input -> hidden layer
 	for(i = 0; i < H; i++)
@@ -148,7 +150,6 @@ float feed_fwd(float x){
 #ifdef NORMALIZE
 	output = denormalize(output);
 #endif
-	//large_output = output * 256.0;
 	return output;
 
 }
@@ -177,7 +178,7 @@ float train_network(float input, float output){
 		for(j = 0; j < H; j++){
 			//calculate dw depeding on layer
 			if(i == 0)
-				dw = c * ((answer - output) * weights[j][1] * h_o[j][0] * (1 - h_o[j][0]) * input);
+				dw = c * ((answer - output) * weights[j][1] * h_o[j][0] * (1 - h_o[j][0]) * (input));
 			else
 				dw = c * ((answer - output) * h_o[j][i-1]);
 #ifdef MOMENTUM
@@ -236,10 +237,10 @@ float find_total_error(float desired, float actual){
 
 #ifdef NORMALIZE
 float normalize(float x){
-	return (x - data_min) / (data_max - data_min);
+	return (normalized_max - normalized_min) * (x - data_min) / (data_max - data_min) + normalized_min;
 }
 
 float denormalize(float z){
-	return (data_max - data_min) * z + data_min;
+	return (data_max - data_min) * (z - normalized_min) / (normalized_max - normalized_min) + data_min;
 }
 #endif
