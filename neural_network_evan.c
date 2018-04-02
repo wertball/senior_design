@@ -413,10 +413,11 @@ int main() {
         //Forward and back for each sample
         for (i = 0; i < samples; i++) {
             forward(training_in[i]);
-            error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
+            error += fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1])
+                     - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]));
             backpropagation(training_in[i], &training_out[i]);
         }
-        error /= samples;
+        error *= (100.0f / (samples * denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1])));
 
         //Debug prints
         if ((it & 0xFFFF) == 0) {
@@ -431,7 +432,7 @@ int main() {
                        denormalize(outputs[0], data_range[5][0], data_range[5][1]));
             }
             printf("Iteration: %lu\n", it);
-            printf("Total Error: %.3e\n", error);
+            printf("Average %%Error: %.3f%%\n", error);
             fflush(stdout);
         }
         it++;
@@ -467,7 +468,8 @@ int main() {
     error = 0;
     for (i = 0; i < samples; i++) {
         forward(training_in[i]);
-        error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
+        error += fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1])
+                       - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]));
         printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
                denormalize(training_in[i][0], data_range[0][0], data_range[0][1]),
                denormalize(training_in[i][1], data_range[1][0], data_range[1][1]),
@@ -476,13 +478,18 @@ int main() {
                denormalize(training_in[i][4], data_range[4][0], data_range[4][1]),
                denormalize(outputs[0], data_range[5][0], data_range[5][1]));
     }
-    printf("Total Error: %.3e\n", error / samples);
+    printf("Average %%Error: %.3f%%\n",
+           error * (100.0f / (samples * denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))));
 
-    //LET MY ARRAYS GO
+    //Free dynamic arrays
     for (i = 0; i < samples; i++) {
         free(training_in[i]);
     }
     free(training_in);
+    for (i = 0; i < (INPUTS + 1); i++) {
+        free(data_range[i]);
+    }
+    free(data_range);
     free(training_out);
     return 0;
 }
