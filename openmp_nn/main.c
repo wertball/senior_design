@@ -40,8 +40,6 @@
 #define file_base_directory "F:\\school\\ELEC4000\\senior_design\\gitRepo\\openmp_nn\\"
 #define training_data_file (file_base_directory"data_for_training.txt")
 #define testing_data_file (file_base_directory"data_for_verify.txt")
-#define error_results_file (file_base_directory"Error_Results.txt")
-#define test_results_file (file_base_directory"Test_Results.txt")
 //--------------------------------------------------------------------------------------
 
 int read_data(char *file_name, calc_t ***training_in, calc_t **training_out, calc_t ***data_range);
@@ -49,11 +47,19 @@ void normalizeIOSets(int samples, calc_t **t_in, calc_t *t_out, calc_t **d_range
 
 int main(int argc, char **argv){
 
-    //parse input
-    int num_threads = 1;
-    if (argc >= 2)
+    //parse input - main {num_threads | training_results_file | testing_results_file}
+    uint8_t num_threads = 1;
+    char *testing_results_file = (file_base_directory"Testing_Results.txt"),
+         *training_results_file = (file_base_directory"Training_Results.txt");
+    if(argc >= 2)
         num_threads = strtol(argv[1], NULL, 0);
+    if(argc >= 4){
+        training_results_file = argv[2];
+        testing_results_file = argv[3];
+    }
     printf("Attempting to run with %d threads . . .\n", num_threads);
+    printf("Training Results File: %s\n", training_results_file);
+    printf("Testing Results File: %s\n", testing_results_file);
 
     //timing variables
     struct timeval t1, t2, t3, t4;
@@ -88,11 +94,10 @@ int main(int argc, char **argv){
 	//train the network
 	int i, j, tid;
 	calc_t error = 1.0;
-	calc_t error_1 = 0.0;
     FILE *fp;
-    fp = fopen(error_results_file,"w");
+    fp = fopen(training_results_file,"w");
     if(fp == NULL)
-        printf("Failed to write %s\nerrno: %d\n", error_results_file, errno);
+        printf("Failed to write %s\nerrno: %d\n", training_results_file, errno);
 
 	//train using percent error calculation--------------------------
     gettimeofday(&t1, NULL);
@@ -156,9 +161,9 @@ int main(int argc, char **argv){
     calc_t test_error = 0;
     calc_t largest = 0.0;
     calc_t smallest = 100.0;
-    fp = fopen(test_results_file,"w");
+    fp = fopen(testing_results_file,"w");
     if(fp == NULL)
-        printf("Failed to write %s\nerrno: %d", test_results_file, errno);
+        printf("Failed to write %s\nerrno: %d", testing_results_file, errno);
 
     tid = omp_get_thread_num();
 	for(i = 0; i < testing_set_size; i++){
