@@ -7,11 +7,16 @@
 
 #define INPUTS 5
 #define H_LAYERS 3
-#define H_HEIGHT 20
+#define H_HEIGHT 10
 #define OUTPUTS 1
 #define BIAS 1
 
 #define DATA_FILE "data_for_training.txt"
+#define TEST_FILE "data_for_verify.txt"
+
+#define ITERATIONS 1E4
+
+//#define DEBUG
 
 //Weight declarations
 double weights_in[INPUTS * H_HEIGHT];// = {.15,.20};
@@ -81,7 +86,7 @@ static inline double denormalize(double input, double min, double max) {
 }
 //--------------------------------------------
 
-void forward(double in[INPUTS]) {
+void forward(double in[INPUTS], double *output_range) {
     int i,j,k;
 
     //Input layer-----------------------
@@ -140,38 +145,38 @@ void forward(double in[INPUTS]) {
         #endif
 
         //Normalize output
-        //outputs[i] = normalize(outputs[i]);
+        outputs[i] = normalize(outputs[i], output_range[0], output_range[1]);
 
         //Activation
-        outputs[i] = activation(outputs[i]);
+        //outputs[i] = activation(outputs[i]);
         //printf("Output %d: %f\n", i, outputs[i]);
     }
     //-----------------------------------
 }
 
-void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
+void backpropagation(double in[INPUTS], double target_out[OUTPUTS],
+                        double weights_in_delta[INPUTS * H_HEIGHT], double weights_out_delta[OUTPUTS * H_HEIGHT]
+                        #if (BIAS > 0)
+                        ,double weights_bias_out_delta[OUTPUTS], double weights_bias_h_delta[H_LAYERS][H_HEIGHT]
+                        #endif
+                        #if (H_LAYERS > 1)
+                        ,double weights_h_delta[H_LAYERS-1][H_HEIGHT*H_HEIGHT]
+                        #endif
+                        ) {
     int i,j,k;
     double delta_sum;
     double deltas_h[H_HEIGHT];
     double deltas_h_new[H_HEIGHT];
     double deltas_o[OUTPUTS];
-    double weights_out_new[OUTPUTS * H_HEIGHT];
-    #if (H_LAYERS > 1)
-    //TODO: Make this more memory efficient
-    double weights_h_new[H_LAYERS - 1][H_HEIGHT * H_HEIGHT];
-    #endif
-
 
     //Output layer------------------------------
     for (i = 0; i < OUTPUTS; i++) {
-        deltas_o[i] = (outputs[i] * (1 - outputs[i])) * (outputs[i] - target_out[i]);
+        deltas_o[i] = (outputs[i] - target_out[i]);
         for (j = 0; j < H_HEIGHT; j++) {
-            weights_out_new[(i * H_HEIGHT) + j] = weights_out[(i * H_HEIGHT) + j] -
-                    (ALPHA * deltas_o[i] * h_out[H_LAYERS - 1][j]);
-            //printf("New weight_out[%d]: %f\n", (i * OUTPUTS) + j, weights_out_new[(i * OUTPUTS) + j]);
+            weights_out_delta[(i * H_HEIGHT) + j] += deltas_o[i] * h_out[H_LAYERS - 1][j];
         }
         #if (BIAS > 0)
-        weights_bias_out[i] -= ALPHA * deltas_o[i] * BIAS;
+        weights_bias_out_delta[i] += deltas_o[i] * BIAS;
         #endif
     }
     //-------------------------------------------
@@ -190,11 +195,10 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
         //Calculate new weights------------
         for (j = 0; j < H_HEIGHT; j++) {
-            weights_h_new[H_LAYERS-2][(i * H_HEIGHT) + j] = weights_h[H_LAYERS-2][(i * H_HEIGHT) + j] -
-                    (ALPHA * deltas_h[i] * h_out[H_LAYERS-2][j]);
+            weights_h_delta[H_LAYERS-2][(i * H_HEIGHT) + j] += deltas_h[i] * h_out[H_LAYERS-2][j];
         }
         #if (BIAS > 0)
-        weights_bias_h[H_LAYERS-1][i] -= ALPHA * deltas_h[i] * BIAS;
+        weights_bias_h_delta[H_LAYERS-1][i] += deltas_h[i] * BIAS;
         #endif
         //----------------------------------
     }
@@ -211,11 +215,10 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
             //Get new weights-------------------
             for (k = 0; k < H_HEIGHT; k++) {
-                weights_h_new[i-1][(j * H_HEIGHT) + k] = weights_h[i-1][(j * H_HEIGHT) + k] -
-                        (ALPHA * deltas_h_new[j] * h_out[i - 1][k]);
+                weights_h_delta[i-1][(j * H_HEIGHT) + k] += (deltas_h_new[j] * h_out[i - 1][k]);
             }
             #if (BIAS > 0)
-            weights_bias_h[i][j] -= ALPHA * deltas_h_new[j] * BIAS;
+            weights_bias_h_delta[i][j] += deltas_h_new[j] * BIAS;
             #endif
             //----------------------------------
         }
@@ -233,10 +236,10 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
 
         //Get new weights---------------
         for (j = 0; j < INPUTS; j++) {
-            weights_in[(i * INPUTS) + j] -= (ALPHA * deltas_h_new[i] * in[j]);
+            weights_in_delta[(i * INPUTS) + j] += (deltas_h_new[i] * in[j]);
         }
         #if (BIAS > 0)
-        weights_bias_h[0][i] -= ALPHA * deltas_h_new[i] * BIAS;
+        weights_bias_h_delta[0][i] += deltas_h_new[i] * BIAS;
         #endif
         //-------------------------------
     }
@@ -248,37 +251,19 @@ void backpropagation(double in[INPUTS], double target_out[OUTPUTS]) {
         }
         deltas_h[i] = (h_out[0][i] * (1 - h_out[0][i])) * delta_sum;
         for (j = 0; j < INPUTS; j++) {
-            weights_in[(i * INPUTS) + j] -= (ALPHA * deltas_h[i] * in[j]);
+            weights_in_delta[(i * INPUTS) + j] += (deltas_h[i] * in[j]);
             //printf("New weight_in[%d]: %f\n", (i * INPUTS) + j, weights_in[(i * INPUTS) + j]);
         }
         #if (BIAS > 0)
-        weights_bias_h[0][i] -= ALPHA * deltas_h[i] * BIAS;
+        weights_bias_h_delta[0][i] += deltas_h[i] * BIAS;
         #endif
     }
     #endif
     //---------------------------------------------------------------------------------------------
 
-    //Write new values---------------------------
-    //Output layer
-    memcpy(weights_out, weights_out_new, OUTPUTS * H_HEIGHT * sizeof(double));
-//    for (i = 0; i < OUTPUTS * H_HEIGHT; i++) {
-//        weights_out[i] = weights_out_new[i];
-//    }
-    //Hidden layer
-    #if (H_LAYERS > 1)
-    for (i = 0; i < H_LAYERS - 1; i++) {
-        memcpy(weights_h, weights_h_new, H_HEIGHT * H_HEIGHT * sizeof(double));
-//        for (j = 0; j < (H_HEIGHT * H_HEIGHT); j++) {
-//            weights_h[i][j] = weights_h_new[i][j];
-//        }
-    }
-    #endif
-    //--------------------------------------------
 }
 
-
-
-int read_training_set(char *file_name, double ***training_in, double **training_out, double ***data_range) {
+int load_file(char *file_name, double ***input_samples, double **output_samples, double ***data_range) {
     int i, j, samples, current_line;
     double **t_in, *t_out, **d_range;
     char temp_str[100];
@@ -319,8 +304,8 @@ int read_training_set(char *file_name, double ***training_in, double **training_
         d_range[i][1] = DBL_MIN;
     }
     t_out = (double *) malloc(samples * sizeof(double));
-    *training_in = t_in;
-    *training_out = t_out;
+    *input_samples = t_in;
+    *output_samples = t_out;
     *data_range = d_range;
 
     //Get data from file
@@ -356,7 +341,6 @@ int read_training_set(char *file_name, double ***training_in, double **training_
             if (t_out[i] > d_range[INPUTS][1]) {
                 d_range[INPUTS][1] = t_out[i];
             }
-            //t_out[i] = normalize(t_out[i]);
             i++;
         }
         current_line++;
@@ -364,65 +348,106 @@ int read_training_set(char *file_name, double ***training_in, double **training_
     //close file
     fclose(fp);
 
-    //Normalize
-    for (i = 0; i < samples; i++) {
-        for (j = 0; j < INPUTS; j++) {
-            if (d_range[j][0] == d_range[j][1]) {
-                t_in[i][j] = 1;
-            }
-            else {
-                t_in[i][j] = normalize(t_in[i][j], d_range[j][0], d_range[j][1]);
-            }
-        }
-        t_out[i] = normalize(t_out[i], d_range[INPUTS][0], d_range[INPUTS][1]);
-    }
-
     return samples;
 }
 
-#define SAMPLES 10
-int main() {
-    int i, j, k;
-    int samples;
-    unsigned long int it = 0;
-    struct timeval t1, t2;
-    double **training_in, *training_out, **data_range;
-    double error;
+void normalize_data(double **data_in, double *data_out, double **data_range, int samples) {
+    int i, j;
 
-    //Z = X^2 + Y^2
-    //double training_in[SAMPLES][2], training_out[SAMPLES];
-    //for (i = 0; i < SAMPLES; i++) {
-    //    training_in[i][0] = normalize(11-i);
-    //    training_in[i][1] = normalize(i);
-    //    training_out[i] = normalize(((11-i) * (11-i)) + (i * i));
-    //}
-
-
-    samples = read_training_set(DATA_FILE, &training_in, &training_out, &data_range);
-    if (samples <= 0) {
-        return 1;
+    //Normalize
+    for (i = 0; i < samples; i++) {
+        for (j = 0; j < INPUTS; j++) {
+            if (data_range[j][0] == data_range[j][1]) {
+                data_in[i][j] = 1;
+            }
+            else {
+                data_in[i][j] = normalize(data_in[i][j], data_range[j][0], data_range[j][1]);
+            }
+        }
+        data_out[i] = normalize(data_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
     }
-    initialize();
 
+}
+
+void train(double **training_in, double *training_out, double **data_range, int samples) {
+    int i, j;
+    double error;
+    long long it = 0;
+    struct timeval t1, t2;
+
+    double weights_in_delta[INPUTS*H_HEIGHT], weights_out_delta[OUTPUTS*H_HEIGHT];
+    #if (BIAS > 0)
+    double weights_bias_out_delta[OUTPUTS], weights_bias_h_delta[H_LAYERS][H_HEIGHT];
+    #endif
+    #if (H_LAYERS>1)
+    double weights_h_delta[H_LAYERS-1][H_HEIGHT*H_HEIGHT];
+    #endif
 
     gettimeofday(&t1, NULL);
     error = 1;
-    while (error > 1E-6) {
+    while (it < ITERATIONS) {
         error = 0;
+
+        //Zero delta arrays
+        memset(weights_in_delta, 0, INPUTS*H_HEIGHT*sizeof(double));
+        memset(weights_out_delta, 0, OUTPUTS*H_HEIGHT*sizeof(double));
+        #if (BIAS>0)
+        memset(weights_bias_out_delta, 0, OUTPUTS*sizeof(double));
+        memset(weights_bias_h_delta, 0, H_LAYERS*H_HEIGHT*sizeof(double));
+        #endif
+        #if (H_LAYERS>1)
+        memset(weights_h_delta, 0, (H_LAYERS-1)*H_HEIGHT*H_HEIGHT*sizeof(double));
+        #endif
 
         //Forward and back for each sample
         for (i = 0; i < samples; i++) {
-            forward(training_in[i]);
+            forward(training_in[i], data_range[INPUTS]);
             error += fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1])
-                     - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]));
-            backpropagation(training_in[i], &training_out[i]);
+                          - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))
+                          / denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
+            backpropagation(training_in[i], &training_out[i],
+                            weights_in_delta,weights_out_delta
+            #if (BIAS>0)
+                    ,weights_bias_out_delta,weights_bias_h_delta
+            #endif
+            #if (H_LAYERS>1)
+                    ,weights_h_delta
+            #endif
+            );
         }
-        error *= (100.0f / (samples * denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1])));
+        error *= (100.0f / samples);
+
+        //Average weight deltas and apply
+        for (i = 0; i < INPUTS*H_HEIGHT; i++) {
+            weights_in[i] -= ((ALPHA * weights_in_delta[i]) / samples);
+        }
+        for (i = 0; i < OUTPUTS * H_HEIGHT; i++) {
+            weights_out[i] -= ((ALPHA * weights_out_delta[i]) / samples);
+        }
+        #if (BIAS>0)
+        for (i = 0; i < OUTPUTS; i++) {
+            weights_bias_out[i] -= ((ALPHA * weights_bias_out_delta[i]) / samples);
+        }
+        for (i = 0; i < H_LAYERS; i++) {
+            for (j = 0; j < H_LAYERS; j++) {
+                weights_bias_h[i][j] -= ((ALPHA * weights_bias_h_delta[i][j]) / samples);
+            }
+        }
+        #endif
+        #if (H_LAYERS>1)
+        for (i = 0; i < (H_LAYERS-1); i++) {
+            for (j = 0; j < (H_HEIGHT*H_HEIGHT); j++) {
+                weights_h[i][j] -= ((ALPHA * weights_h_delta[i][j]) / samples);
+            }
+        }
+        #endif
+
 
         //Debug prints
         if ((it & 0xFFFF) == 0) {
+            #ifdef DEBUG
             for (j = 0; j < samples; j++) {
-                forward(training_in[j]);
+                forward(training_in[j], data_range[INPUTS]);
                 printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
                        denormalize(training_in[j][0], data_range[0][0], data_range[0][1]),
                        denormalize(training_in[j][1], data_range[1][0], data_range[1][1]),
@@ -431,45 +456,24 @@ int main() {
                        denormalize(training_in[j][4], data_range[4][0], data_range[4][1]),
                        denormalize(outputs[0], data_range[5][0], data_range[5][1]));
             }
-            printf("Iteration: %lu\n", it);
+            #endif
+            printf("Iteration: %.3e\n", (double) it);
             printf("Average %%Error: %.3f%%\n", error);
             fflush(stdout);
         }
         it++;
-        //printf("Iteration:%lu  Error:%12.10f\n", it++, error);
     }
 
-    //while (error > 1E-6) {
-    //    error = 0;
-    //    for (i = 0; i < SAMPLES; i++) {
-    //        forward(training_in[i]);
-    //        error += (training_out[i] - outputs[0]) * (training_out[i] - outputs[0]);
-    //        backpropagation(training_in[i], &training_out[i]);
-    //    }
-    //    error /= SAMPLES;
-    //    if ((it & 0xFFFF) == 0) {
-    //        for (j = 0; j < SAMPLES; j++) {
-    //            forward(training_in[j]);
-    //            for (k = 0; k < INPUTS; k++) {
-    //                printf("%f ", denormalize(training_in[j][k]));
-    //            }
-    //            printf("%f\n", denormalize(outputs[0]));
-    //        }
-    //        printf("Iteration: %lu\n", it);
-    //        printf("Total Error: %.3e\n", error);
-    //        fflush(stdout);
-    //    }
-    //    it++;
-    //}
     gettimeofday(&t2, NULL);
     printf("Training time: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
-    printf("Iterations: %lu\n", it);
+    printf("Iterations: %llu\n", it);
 
     error = 0;
     for (i = 0; i < samples; i++) {
-        forward(training_in[i]);
+        forward(training_in[i], data_range[INPUTS]);
         error += fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1])
-                       - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]));
+                      - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))
+                      / denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
         printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f\n",
                denormalize(training_in[i][0], data_range[0][0], data_range[0][1]),
                denormalize(training_in[i][1], data_range[1][0], data_range[1][1]),
@@ -478,8 +482,67 @@ int main() {
                denormalize(training_in[i][4], data_range[4][0], data_range[4][1]),
                denormalize(outputs[0], data_range[5][0], data_range[5][1]));
     }
-    printf("Average %%Error: %.3f%%\n",
-           error * (100.0f / (samples * denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))));
+    printf("Average %%Error: %.3f%%\n", error * (100.0f / samples));
+}
+
+int test(char *filename, double **data_range) {
+    int i;
+    int samples;
+    double **test_in, *test_out, **test_range;
+    double sample_error, average_error, max_error;
+
+    //Load test data and normalize
+    samples = load_file(filename, &test_in, &test_out, &test_range);
+    normalize_data(test_in, test_out, data_range, samples);
+    if (samples <= 0) {
+        return 1;
+    }
+
+    //Run tests
+    average_error = max_error = 0;
+    for (i = 0; i < samples; i++) {
+        forward(test_in[i], data_range[INPUTS]);
+
+        sample_error = fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1]) - denormalize(test_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))
+                      / denormalize(test_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
+
+        average_error += sample_error;
+        if (sample_error > max_error) {
+            max_error = sample_error;
+        }
+
+        printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f    %.3f%%\n",
+               denormalize(test_in[i][0], data_range[0][0], data_range[0][1]),
+               denormalize(test_in[i][1], data_range[1][0], data_range[1][1]),
+               denormalize(test_in[i][2], data_range[2][0], data_range[2][1]),
+               denormalize(test_in[i][3], data_range[3][0], data_range[3][1]),
+               denormalize(test_in[i][4], data_range[4][0], data_range[4][1]),
+               denormalize(outputs[0], data_range[5][0], data_range[5][1]),
+               sample_error * 100);
+    }
+    printf("Average Testing %%Error: %.3f%%\n", average_error * (100.0f / samples));
+    printf("Max %%Error: %.3f%%\n", max_error*100);
+
+
+}
+
+int main() {
+    int i;
+    int samples;
+    double **training_in, *training_out, **data_range;
+
+    samples = load_file(DATA_FILE, &training_in, &training_out, &data_range);
+    normalize_data(training_in, training_out, data_range, samples);
+    if (samples <= 0) {
+        return 1;
+    }
+    initialize();
+
+    printf("Training...\n");
+    train(training_in, training_out, data_range, samples);
+
+    printf("Testing...\n");
+    test(TEST_FILE, data_range);
 
     //Free dynamic arrays
     for (i = 0; i < samples; i++) {
