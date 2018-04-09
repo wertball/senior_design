@@ -140,7 +140,7 @@ calc_t* init_weights(int size, calc_t bound){
     return arr;
 }
 
-void feed_forward(Neural_Net *nn, calc_t *input, int tid){
+void feed_forward(Neural_Net *nn, calc_t *input, int tid, calc_t *data_range){
     int i, j, k;    //iterators
     calc_t sum;     //running sum for node input MACs
     Layer *pl, *l;  //previous, current layer pointers
@@ -168,7 +168,7 @@ void feed_forward(Neural_Net *nn, calc_t *input, int tid){
     for(j = 0; j < l->nn; j++){
         for(sum = 0, k = 0; k < pl->nn; k++)
             sum +=  pl->node[k]->thread[tid]->o * pl->node[k]->cw[j];
-        l->node[j]->thread[tid]->o = normalize(sum, 0.549361, 3.43917);
+        l->node[j]->thread[tid]->o = normalize(sum, data_range);
     }
 }
 
@@ -254,12 +254,16 @@ calc_t percent_error(calc_t desired, calc_t actual){
     return fabs((actual - desired) / desired * (calc_t)100.0);
 }
 
-calc_t normalize(calc_t input, calc_t min, calc_t max){
-    return (input - min) / (max - min);
+calc_t normalize(calc_t input, calc_t *data_range){
+    //index 0 => min
+    //index 1 => max
+    return (input - data_range[0]) / (data_range[1] - data_range[0]);
 }
 
-calc_t denormalize(calc_t input, calc_t min, calc_t max){
-    return (max - min) * input + min;
+calc_t denormalize(calc_t input, calc_t *data_range){
+    //index 0 => min
+    //index 1 => max
+    return input * (data_range[1] - data_range[0]) + data_range[0];
 }
 
 //help functions
