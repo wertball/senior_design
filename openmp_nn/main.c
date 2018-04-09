@@ -36,10 +36,6 @@
 #define testing_set_size 360
 //Network Parameters--------------
 
-//OMP parameters-----------------
-#define num_threads 1
-//-------------------------------
-
 //File Locations------------------------------------------------------------------------
 #define file_base_directory "F:\\school\\ELEC4000\\senior_design\\gitRepo\\openmp_nn\\"
 #define training_data_file (file_base_directory"data_for_training.txt")
@@ -51,10 +47,17 @@
 int read_data(char *file_name, calc_t ***training_in, calc_t **training_out, calc_t ***data_range);
 void normalizeIOSets(int samples, calc_t **t_in, calc_t *t_out, calc_t **d_range);
 
-int main(void){
+int main(int argc, char **argv){
+
+    //parse input
+    int num_threads = 1;
+    if (argc >= 2)
+        num_threads = strtol(argv[1], NULL, 0);
+    printf("Attempting to run with %d threads . . .\n", num_threads);
+
     //timing variables
-    struct timeval t1, t2, t3, t4, t5;
-    struct timeval thread_timevals[3*2*num_threads];
+    struct timeval t1, t2, t3, t4;
+    struct timeval thread_timevals[2*2*num_threads];
 
     //openmp setup
     omp_set_num_threads(num_threads);
@@ -95,12 +98,10 @@ int main(void){
     gettimeofday(&t1, NULL);
 	for(i = 0; i < training_iterations /*&& error > target_error*/; i++){
 		error = 0.0;
-        gettimeofday(&t5, NULL);
         //assume update weights to be zero
 	    #pragma omp parallel for private(tid) reduction(+:error)
         for(j = 0; j < training_set_size; j++){
             tid = omp_get_thread_num();
-            if(!j) gettimeofday(&thread_timevals[tid*2 + 2*2*num_threads + 2], NULL);
             //training
             gettimeofday(&thread_timevals[tid*2], NULL);
             feed_forward(nn, input_sets[j], tid, data_range[set_input_size]);
@@ -141,8 +142,6 @@ int main(void){
         printf("thread%d - error calc time(s): %e\n", i, thread_timevals[i*2+2*2*num_threads+1].tv_sec - thread_timevals[i*2+2*2*num_threads].tv_sec + (thread_timevals[i*2+2*2*num_threads+1].tv_usec - thread_timevals[i*2+2*2*num_threads].tv_usec)*1.0E-6);
     printf("synchronized weight update time(s): %e\n", t4.tv_sec - t3.tv_sec + (t4.tv_usec - t3.tv_usec)*1.0E-6);
     printf("time for threads to enter for loop:\n");
-    for(i = 0; i < num_threads; i++)
-        printf("thread%d: %e\n", i, t5.tv_sec - thread_timevals[i*2+2*2*num_threads+2].tv_sec + (t5.tv_usec - thread_timevals[i*2+2*2*num_threads+2].tv_usec)*1.0E-6);
     //---------------------------------------------------------------------------------------------
 
 	//test network
