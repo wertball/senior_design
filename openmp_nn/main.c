@@ -30,10 +30,7 @@
 #define learning_rate (calc_t)0.2
 #define training_iterations 10000
 #define target_error 5e-2
-
-#define training_set_size 55
 #define set_input_size 5
-#define testing_set_size 360
 //Network Parameters--------------
 
 //File Locations------------------------------------------------------------------------
@@ -86,9 +83,9 @@ int main(int argc, char **argv){
     calc_t **input_sets;
     calc_t *output;
     calc_t **data_range;
-    int samples = read_data(training_data_file, &input_sets, &output, &data_range);
-    FIO(printf("Number of training data samples read: %d\n", samples););
-    normalizeIOSets(samples, input_sets, output, data_range);
+    int training_set_size = read_data(training_data_file, &input_sets, &output, &data_range);
+    FIO(printf("Number of training data samples read: %d\n", training_set_size););
+    normalizeIOSets(training_set_size, input_sets, output, data_range);
 
 	//train the network
 	int i, j, tid;
@@ -138,9 +135,9 @@ int main(int argc, char **argv){
     calc_t **test_input_sets;
     calc_t *test_output;
     calc_t **test_data_range;
-    samples = read_data(testing_data_file, &test_input_sets, &test_output, &test_data_range);
-    FIO(printf("Number of training data samples read: %d\n", samples););
-    normalizeIOSets(samples, test_input_sets, test_output, data_range);
+    int testing_set_size = read_data(testing_data_file, &test_input_sets, &test_output, &test_data_range);
+    FIO(printf("Number of training data samples read: %d\n", testing_set_size););
+    normalizeIOSets(testing_set_size, test_input_sets, test_output, data_range);
 
     calc_t test_error = 0;
     calc_t largest = 0.0;
