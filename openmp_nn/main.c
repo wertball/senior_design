@@ -108,12 +108,12 @@ int main(int argc, char **argv){
             tid = omp_get_thread_num();
 
             //training
-            feed_forward(nn,input_sets[j], tid);
+            feed_forward(nn,input_sets[j], tid, data_range[set_input_size]);
             backpropagate(nn, output[j], tid);
 
             //determine expected and actual values
-            calc_t expected = denormalize(output[j], data_range[set_input_size][0], data_range[set_input_size][1]);
-            calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size][0], data_range[set_input_size][1]);
+            calc_t expected = denormalize(output[j], data_range[set_input_size]);
+            calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size]);
 
             //determining percent error
             error += percent_error(expected, actual);
@@ -152,11 +152,11 @@ int main(int argc, char **argv){
     tid = omp_get_thread_num();
 	for(i = 0; i < testing_set_size; i++){
         //feed test data
-		feed_forward(nn, test_input_sets[i], tid);
+		feed_forward(nn, test_input_sets[i], tid, data_range[set_input_size]);
 
         //determine expected and actual values
-        calc_t expected = denormalize(test_output[i], data_range[set_input_size][0], data_range[set_input_size][1]);
-        calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size][0], data_range[set_input_size][1]);
+        calc_t expected = denormalize(test_output[i], data_range[set_input_size]);
+        calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size]);
 
         //print results to file
 		fprintf(fp,"%.2f, %.2f, ", actual, expected);
@@ -276,10 +276,10 @@ void normalizeIOSets(int samples, calc_t **t_in, calc_t *t_out, calc_t **d_range
                 t_in[i][j] = 1;
             }
             else {
-                t_in[i][j] = normalize(t_in[i][j], d_range[j][0], d_range[j][1]);
+                t_in[i][j] = normalize(t_in[i][j], d_range[j]);
             }
         }
-        t_out[i] = normalize(t_out[i], d_range[set_input_size][0], d_range[set_input_size][1]);
+        t_out[i] = normalize(t_out[i], d_range[set_input_size]);
     }
 }
 
