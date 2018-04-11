@@ -46,7 +46,7 @@ int read_data(char *file_name, calc_t ***training_in, calc_t **training_out, cal
 void normalizeIOSets(int samples, calc_t **t_in, calc_t *t_out, calc_t **d_range);
 
 int main(int argc, char **argv){
-
+    printf("---------------------------------------------------------------------------------------------\n");
     //parse input - main {num_threads | training_results_file | testing_results_file}
     uint8_t num_threads = 1;
     char *testing_results_file = (file_base_directory"Testing_Results.txt"),
@@ -62,8 +62,7 @@ int main(int argc, char **argv){
     printf("Testing Results File: %s\n", testing_results_file);
 
     //timing variables
-    struct timeval t1, t2, t3, t4;
-    struct timeval thread_timevals[2*2*num_threads];
+    struct timeval t1, t2;
 
     //openmp setup
     omp_set_num_threads(num_threads);
@@ -99,31 +98,28 @@ int main(int argc, char **argv){
     if(fp == NULL)
         printf("Failed to write %s\nerrno: %d\n", training_results_file, errno);
 
-	//train using percent error calculation--------------------------
     gettimeofday(&t1, NULL);
+	//train using percent error calculation--------------------------
 	for(i = 0; i < training_iterations /*&& error > target_error*/; i++){
 		error = 0.0;
         //assume update weights to be zero
 	    #pragma omp parallel for private(tid) reduction(+:error)
         for(j = 0; j < training_set_size; j++){
             tid = omp_get_thread_num();
+
             //training
-            gettimeofday(&thread_timevals[tid*2], NULL);
-            feed_forward(nn, input_sets[j], tid, data_range[set_input_size]);
-            gettimeofday(&thread_timevals[tid*2+1], NULL);
-            gettimeofday(&thread_timevals[tid*2 + 2*num_threads], NULL);
+            feed_forward(nn,input_sets[j], tid);
             backpropagate(nn, output[j], tid);
-            gettimeofday(&thread_timevals[tid*2 + 2*num_threads + 1], NULL);
+
+            //determine expected and actual values
+            calc_t expected = denormalize(output[j], data_range[set_input_size][0], data_range[set_input_size][1]);
+            calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size][0], data_range[set_input_size][1]);
+
             //determining percent error
-            gettimeofday(&thread_timevals[tid*2 + 2*2*num_threads], NULL);
-            calc_t expected = denormalize(output[j], data_range[set_input_size]);
-            calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size]);
             error += percent_error(expected, actual);
-            gettimeofday(&thread_timevals[tid*2 + 2*2*num_threads + 1], NULL);
+
         }
-        gettimeofday(&t3, NULL);
         sync_update_weights(nn, training_set_size);
-        gettimeofday(&t4, NULL);
 		error /= training_set_size;
 		fprintf(fp, "%d\t%.2e\n", i, error);
 	}
@@ -132,21 +128,9 @@ int main(int argc, char **argv){
     //record and print training results------------------------------------------------------------
 	gettimeofday(&t2, NULL);
 	fclose(fp);
-
-    //training results
-    printf("total error: %e\n", error);
-    printf("total runs = %d\n\n", i);
-	printf("total training time(s): %e\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
-
-    //thread information
-    for(i = 0; i < num_threads; i++)
-        printf("thread%d - feed_forward time(s): %e\n", i, thread_timevals[i*2+1].tv_sec - thread_timevals[i*2].tv_sec + (thread_timevals[i*2+1].tv_usec - thread_timevals[i*2].tv_usec)*1.0E-6);
-    for(i = 0; i < num_threads; i++)
-        printf("thread%d - backpropagate time(s): %e\n", i, thread_timevals[i*2+2*num_threads+1].tv_sec - thread_timevals[i*2+2*num_threads].tv_sec + (thread_timevals[i*2+2*num_threads+1].tv_usec - thread_timevals[i*2+2*num_threads].tv_usec)*1.0E-6);
-    for(i = 0; i < num_threads; i++)
-        printf("thread%d - error calc time(s): %e\n", i, thread_timevals[i*2+2*2*num_threads+1].tv_sec - thread_timevals[i*2+2*2*num_threads].tv_sec + (thread_timevals[i*2+2*2*num_threads+1].tv_usec - thread_timevals[i*2+2*2*num_threads].tv_usec)*1.0E-6);
-    printf("synchronized weight update time(s): %e\n", t4.tv_sec - t3.tv_sec + (t4.tv_usec - t3.tv_usec)*1.0E-6);
-    printf("time for threads to enter for loop:\n");
+	printf("\ntraining time(s): %.4f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
+	printf("total error: %e\n", error);
+	printf("total runs = %d\n\n", i);
     //---------------------------------------------------------------------------------------------
 
 	//test network
@@ -168,11 +152,11 @@ int main(int argc, char **argv){
     tid = omp_get_thread_num();
 	for(i = 0; i < testing_set_size; i++){
         //feed test data
-		feed_forward(nn, test_input_sets[i], tid, data_range[set_input_size]);
+		feed_forward(nn, test_input_sets[i], tid);
 
         //determine expected and actual values
-        calc_t expected = denormalize(test_output[i], data_range[set_input_size]);
-        calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size]);
+        calc_t expected = denormalize(test_output[i], data_range[set_input_size][0], data_range[set_input_size][1]);
+        calc_t actual = denormalize(nn->layer[nn->l-1]->node[0]->thread[tid]->o, data_range[set_input_size][0], data_range[set_input_size][1]);
 
         //print results to file
 		fprintf(fp,"%.2f, %.2f, ", actual, expected);
@@ -189,7 +173,7 @@ int main(int argc, char **argv){
     printf("smallest error: %.4f\n", smallest);
     printf("largest error: %.4f\n", largest);
     printf("range of errors: %.4f\n", largest - smallest);
-    printf("average error: %.2f\n", test_error/testing_set_size);
+	printf("average error: %.2f\n", test_error/testing_set_size);
 
 	//dealloc neural network
 	//dealloc(nn);
@@ -292,10 +276,10 @@ void normalizeIOSets(int samples, calc_t **t_in, calc_t *t_out, calc_t **d_range
                 t_in[i][j] = 1;
             }
             else {
-                t_in[i][j] = normalize(t_in[i][j], d_range[j]);
+                t_in[i][j] = normalize(t_in[i][j], d_range[j][0], d_range[j][1]);
             }
         }
-        t_out[i] = normalize(t_out[i], d_range[set_input_size]);
+        t_out[i] = normalize(t_out[i], d_range[set_input_size][0], d_range[set_input_size][1]);
     }
 }
 
