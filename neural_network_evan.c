@@ -6,15 +6,15 @@
 #include <float.h>
 
 #define INPUTS 5
-#define H_LAYERS 3
-#define H_HEIGHT 10
+#define H_LAYERS 10
+#define H_HEIGHT 100
 #define OUTPUTS 1
-#define BIAS 1
+#define BIAS 0
 
 #define DATA_FILE "data_for_training.txt"
 #define TEST_FILE "data_for_verify.txt"
 
-#define ITERATIONS 1E4
+#define ITERATIONS 1
 
 //#define DEBUG
 
@@ -511,14 +511,14 @@ int test(char *filename, double **data_range) {
             max_error = sample_error;
         }
 
-        printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f    %.3f%%\n",
-               denormalize(test_in[i][0], data_range[0][0], data_range[0][1]),
-               denormalize(test_in[i][1], data_range[1][0], data_range[1][1]),
-               denormalize(test_in[i][2], data_range[2][0], data_range[2][1]),
-               denormalize(test_in[i][3], data_range[3][0], data_range[3][1]),
-               denormalize(test_in[i][4], data_range[4][0], data_range[4][1]),
-               denormalize(outputs[0], data_range[5][0], data_range[5][1]),
-               sample_error * 100);
+        //printf("%2.0f %2.0f %3.0f %3.0f %4.2f %9.7f    %.3f%%\n",
+        //       denormalize(test_in[i][0], data_range[0][0], data_range[0][1]),
+        //       denormalize(test_in[i][1], data_range[1][0], data_range[1][1]),
+        //       denormalize(test_in[i][2], data_range[2][0], data_range[2][1]),
+        //       denormalize(test_in[i][3], data_range[3][0], data_range[3][1]),
+        //       denormalize(test_in[i][4], data_range[4][0], data_range[4][1]),
+        //       denormalize(outputs[0], data_range[5][0], data_range[5][1]),
+        //       sample_error * 100);
     }
     printf("Average Testing %%Error: %.3f%%\n", average_error * (100.0f / samples));
     printf("Max %%Error: %.3f%%\n", max_error*100);
