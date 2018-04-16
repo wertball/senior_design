@@ -26,8 +26,8 @@
 //Network Parameters--------------
 #define num_layers 5
 #define learning_rate 0.2
-#define training_iterations 10000
-#define target_error 5e-2
+#define training_iterations 1000000
+#define target_error 9e1
 #define data_min 0.520171
 #define data_max 3.43917
 
@@ -42,9 +42,9 @@
 
 //File Locations------------------------------------------------------------------------
 #define file_base_directory "F:\\school\\ELEC4000\\senior_design\\gitRepo\\thomas_nn\\"
-#define test_output_file (file_base_directory"test_output.txt")
-#define error_results_file (file_base_directory"Error_Results.txt")
-#define test_results_file (file_base_directory"Test_Results.txt")
+#define test_output_file ("test_output.txt")
+#define error_results_file ("Error_Results.txt")
+#define test_results_file ("Test_Results.txt")
 //--------------------------------------------------------------------------------------
 
 int main(void){
@@ -212,7 +212,7 @@ int main(void){
 	for(i = 0; i < training_iterations /*&& error > target_error*/; i++){
 		error = 0.0;
         //assume update weights to be zero
-	    #pragma omp parallel for private(tid) reduction(+:error)
+	    #pragma omp parallel for private(tid, error_1) reduction(+:error)
         for(j = 0; j < training_set_size; j++){
             tid = omp_get_thread_num();
             //training
