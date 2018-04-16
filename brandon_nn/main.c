@@ -24,7 +24,7 @@
 //Network Parameters--------------
 #define num_layers 5
 #define learning_rate 0.2
-#define training_iterations 1e4
+#define training_iterations 1e7
 #define target_error 5e-2
 #define data_min 0.520171
 #define data_max 3.43917
@@ -36,9 +36,10 @@
 
 //File Locations------------------------------------------------------------------------
 #define file_base_directory "F:\\school\\ELEC4000\\senior_design\\gitRepo\\thomas_nn\\"
-#define test_output_file (file_base_directory"test_output.txt")
-#define error_results_file (file_base_directory"Error_Results.txt")
-#define test_results_file (file_base_directory"Test_Results.txt")
+#define test_output_file ("test_output.txt")
+#define error_results_file ("Error_Results.txt")
+#define test_results_file ("Test_Results.txt")
+#define weight_results_file ("Weight_Results.txt")
 //--------------------------------------------------------------------------------------
 
 int main(void){
@@ -162,6 +163,7 @@ int main(void){
 	float t0;
 	float denormalized_test_output[testing_set_size];
     FILE *fp;
+	FILE *fp2;
 
 	fp = fopen(test_output_file,"r");
 	if(fp == NULL)
@@ -190,6 +192,8 @@ int main(void){
 	calc_t error = 1.0;
 	calc_t error_1 = 0.0;
     fp = fopen(error_results_file,"w");
+	fp2 = fopen(weight_results_file, "w");
+	//fprintf(fp2, "0\t%f\t%f\t%f\n", nn->layer[0]->node[4]->cw[19], nn->layer[2]->node[10]->cw[10], nn->layer[3]->node[0]->cw[0]);
     if(fp == NULL)
         printf("Failed to write %s\nerrno: %d\n", error_results_file, errno);
 
@@ -209,6 +213,7 @@ int main(void){
 			error += error_1;
 		}
         update_weights(nn, training_set_size);
+		//fprintf(fp2, "%d\t%f\t%f\t%f\n",(i+1), nn->layer[0]->node[4]->cw[19], nn->layer[2]->node[10]->cw[10], nn->layer[3]->node[0]->cw[0]);
 		error /= training_set_size;
 		fprintf(fp,"%d\t%.2e\n",i,error);
 	}
@@ -242,11 +247,12 @@ int main(void){
         largest = (error > largest) ? error : largest;
 	}
 	fclose(fp);
+	fclose(fp2);
     printf("Test Error: \n");
     printf("smallest error: %.4f\n", smallest);
     printf("largest error: %.4f\n", largest);
     printf("range of errors: %.4f\n", largest - smallest);
-	printf("average error: %.2f\n", test_error/testing_set_size);
+	printf("average error: %f\n", test_error/testing_set_size);
 
 	//dealloc neural network
 	//dealloc(nn);
