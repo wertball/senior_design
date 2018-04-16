@@ -48,7 +48,7 @@ struct Neural_Net_Init_Parameters{
 };
 
 calc_t train_network(Neural_Net *nn, calc_t *input, calc_t output);
-void feed_forward(Neural_Net *nn, calc_t *input, int tid);
+void feed_forward(Neural_Net *nn, calc_t *input, int tid, calc_t data_range[2]);
 void backpropagate(Neural_Net *nn, calc_t output, int tid);
 void sync_update_weights(Neural_Net *nn, calc_t avg_divisor);
 calc_t find_total_error(calc_t desired, calc_t actual);
@@ -56,8 +56,8 @@ calc_t percent_error(calc_t desired, calc_t actual);
 calc_t activate(calc_t x);
 calc_t* init_weights(int size, calc_t bound);
 Neural_Net* init_neural_net(Neural_Net_Init_Params *nnip);
-calc_t normalize(calc_t input, calc_t min, calc_t max);
-calc_t denormalize(calc_t input, calc_t min, calc_t max);
+calc_t normalize(calc_t input, calc_t data_range[2]);
+calc_t denormalize(calc_t input, calc_t data_range[2]);
 
 //help functions
 void printWeights(Neural_Net *nn);
