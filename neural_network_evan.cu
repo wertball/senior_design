@@ -6,15 +6,16 @@
 #include <float.h>
 
 #define INPUTS 5
-#define H_LAYERS 5
-#define H_HEIGHT 20
+#define H_LAYERS 3
+#define H_HEIGHT 5
 #define OUTPUTS 1
 #define BIAS 0
+#define alpha_d 0.5
 
 #define DATA_FILE "data_for_training.txt"
 #define TEST_FILE "data_for_verify.txt"
 
-#define ITERATIONS 1000
+#define ITERATIONS 10000
 
 //#define DEBUG
 
@@ -36,8 +37,11 @@ double outputs[OUTPUTS];
 //Learning declarations
 double ALPHA = .5;
 
-double *training_out_d, *weights_in_d, *weights_out_d, *outputs_d, *training_in_d, *data_range_d, *weights_h_d, *h_out_d, *in_d;
+double *training_out_d, *weights_in_d, *weights_out_d, *outputs_d, *training_in_d, *data_range_d, *weights_h_d, *h_out_d, *in_d, *weights_h_delta_d, *weights_in_delta_d, *weights_out_delta_d, *deltas_h_d, *deltas_h_new_d, *deltas_o_d, *target_out_d;
 size_t training_in_pitch, data_range_pitch, weights_h_pitch, h_out_pitch;
+
+__device__ double error_d;
+//__device__ double alpha_d;
 
 //Randomization functions----------------------
 void randomize_array(int length, double *arr) {
@@ -533,6 +537,13 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 
 	int i, j;
 
+	cudaMalloc((void **)&deltas_h_d, sizeof(double) * H_HEIGHT);
+	cudaMalloc((void **)&deltas_h_new_d, sizeof(double) * H_HEIGHT);
+	cudaMalloc((void **)&deltas_o_d, sizeof(double) * OUTPUTS);
+	cudaMemset(deltas_h_d, 0, sizeof(double) * H_HEIGHT);
+	cudaMemset(deltas_h_new_d, 0, sizeof(double) * H_HEIGHT);
+	cudaMemset(deltas_o_d, 0, sizeof(double) * OUTPUTS);
+
 	size_t training_in_size = sizeof(double) * INPUTS * samples;
 	double *training_in_oneD = (double *)malloc(training_in_size);
 	for(int i = 0; i < samples; i++){
@@ -561,10 +572,14 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 	size_t weights_in_size = sizeof(double) * INPUTS * H_HEIGHT;
 	cudaMalloc((void **)&weights_in_d, weights_in_size);      	//weights_in
 	cudaMemcpy(weights_in_d, weights_in, weights_in_size, cudaMemcpyHostToDevice);
+	cudaMalloc((void **)&weights_in_delta_d, weights_in_size);
+	cudaMemset(weights_in_delta_d, 0, weights_in_size);
 
 	size_t weights_out_size = sizeof(double) * OUTPUTS * H_HEIGHT;
 	cudaMalloc((void **)&weights_out_d, weights_out_size);      //weights_out
 	cudaMemcpy(weights_out_d, weights_out, weights_out_size, cudaMemcpyHostToDevice);
+	cudaMalloc((void **)&weights_out_delta_d, weights_out_size);
+	cudaMemset(weights_out_delta_d, 0, weights_out_size);
 
 	size_t weights_h_size = sizeof(double) * (H_LAYERS - 1) * H_HEIGHT * H_HEIGHT;
 	double *weights_h_oneD = (double *)malloc(weights_h_size);
@@ -573,6 +588,8 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 			weights_h_oneD[i*(H_HEIGHT*H_HEIGHT)+j] = weights_h[i][j];
 		}
 	}
+	cudaMalloc((void **)&weights_h_delta_d, weights_h_size);
+	cudaMemset(weights_h_delta_d, 0, weights_h_size);
 
 	cudaMalloc((void **)&weights_h_d, weights_h_size); //weights_h
 	cudaMemcpy(weights_h_d, weights_h_oneD, weights_h_size, cudaMemcpyHostToDevice);
@@ -619,19 +636,24 @@ __device__ double denormalize_d(double input, double min, double max){
 	return ((max - min) * input) + min;
 }
 
-__global__ void fwd(double *weights_in_d, double *h_out_d, double *weights_h_d, double *weights_out_d, double *outputs_d, int inputs, int height, int layers, double *in_d, int outputs, double *data_range_d){
+__global__ void new_error(double *outputs_d, double *training_out_d, int sample, double *data_range_d){
+	error_d += (fabs(denormalize_d(outputs_d[0], data_range_d[10], data_range_d[11]) - denormalize_d(training_out_d[sample], data_range_d[10], data_range_d[11]))/denormalize_d(training_out_d[sample], data_range_d[10], data_range_d[11]));
+}
 
-	int i, j, k;
+__global__ void fwd(double *weights_in_d, double *h_out_d, double *weights_h_d, double *weights_out_d, double *outputs_d, int inputs, int height, int layers, int outputs, double *data_range_d, double *training_in_d, int sample){
+
+	int i, j;
 
 	int tix = threadIdx.x;
-	int tiy = threadIdx.y;
 
 	double temp = 0.0;
 	for(i = 0; i < inputs; i++){
-		temp += weights_in_d[tix * inputs + i] * in_d[i];
+		temp += weights_in_d[tix * inputs + i] * training_in_d[sample *inputs + i];
 	}
 
 	h_out_d[tix] = activation_d(temp);
+
+	__syncthreads();
 
 	for(i = 0; i < (layers - 1); i++){
 		temp = 0;
@@ -639,6 +661,7 @@ __global__ void fwd(double *weights_in_d, double *h_out_d, double *weights_h_d, 
 			temp += weights_h_d[i * height * height + (tix * height + j)] * h_out_d[i * height + j];
 		}
 		h_out_d[(i+1)*height+tix] = activation_d(temp);
+		__syncthreads();
 	}
 
 	if(tix < outputs){
@@ -647,30 +670,117 @@ __global__ void fwd(double *weights_in_d, double *h_out_d, double *weights_h_d, 
 			temp += weights_out_d[tix * height + j] * h_out_d[(layers-1)*height+j];
 		}
 		outputs_d[tix] = normalize_d(temp, data_range_d[10], data_range_d[11]);
-		printf("\n%d - %f\n", tix, outputs_d[tix]);
 	}
+	__syncthreads();
 
 }
 
-__global__ void back(){
+__global__ void back(double *h_out_d, double *weights_out_d, double *weights_h_d, double *weights_in_d, double *outputs_d, double *deltas_h_d, double *deltas_h_new_d, double *deltas_o_d, double *weights_in_delta_d, double *weights_out_delta_d, double *weights_h_delta_d, int height, int inputs, int outputs, int layers, double *training_in_d, double *training_out_d, int sample){
 
+	int i, j, k;
+
+	int tix = threadIdx.x;
+
+	double delta_sum, temp;
+
+	//output layer
+	if(tix < outputs){
+		deltas_o_d[tix] = (outputs_d[tix] - training_out_d[sample]);
+		for(i = 0; i < height; i++){
+			weights_out_delta_d[(tix * height) + i] += deltas_o_d[tix] * h_out_d[(layers-1)*height+i];
+		}
+	}
+
+	__syncthreads();
+
+	//hidden layer
+
+	//layer connected to output
+	delta_sum = 0;
+	for(i = 0; i < outputs; i++){
+		delta_sum += weights_out_d[tix + (i * height)] * deltas_o_d[i];
+	}
+	temp = h_out_d[(layers-1)*height + tix];
+	deltas_h_d[tix] = temp * (1 - temp) * delta_sum;
+
+	for(i = 0; i < height; i++){ 
+		weights_h_delta_d[(layers-2)*height*height + (tix * height) + i] += deltas_h_d[tix] * h_out_d[(layers-2)*height+i];
+	}
+
+	__syncthreads();
+
+	//each hidden layer not connected to input/hidden output layer
+	for(i = layers - 2; i > 0; i--){
+		delta_sum = 0;
+		for(j = 0; j < height; j++){
+			delta_sum += weights_h_d[i*height*height + j*height + tix] * deltas_h_d[j];
+		}
+		temp = h_out_d[i*height + tix];
+		deltas_h_new_d[tix] = temp * (1 - temp) * delta_sum;
+
+		for(j = 0; j < height; j++){
+			weights_h_delta_d[(i-1)*height*height + (tix * height) + j] += (deltas_h_new_d[tix] * h_out_d[(i-1)*height+j]);
+		}
+
+		__syncthreads();
+		//change pointers to simulate copying memory
+		deltas_h_d[tix] = deltas_h_new_d[tix];
+
+		__syncthreads();
+
+	}
+
+	//Layer connected to inputs
+	delta_sum = 0;
+	for(i=0; i<height; i++){
+		delta_sum += weights_h_d[i*height + tix] * deltas_h_d[i];
+	}
+	temp = h_out_d[tix];
+	deltas_h_new_d[tix] = temp * (1 - temp) * delta_sum;
+
+	for(i=0; i<inputs; i++){
+		weights_in_delta_d[tix*inputs+i] += (deltas_h_new_d[tix] * training_in_d[sample * inputs + i]);
+	}
+
+	__syncthreads(); 
+
+}
+
+__global__ void update(double *weights_in_d, double *weights_h_d, double *weights_out_d, double *weights_in_delta_d, double *weights_h_delta_d, double *weights_out_delta_d){
+	int tix = threadIdx.x;
+
+	if(tix < INPUTS*H_HEIGHT){
+		weights_in_d[tix] -= (alpha_d * weights_in_delta_d[tix] / 55);
+		weights_in_delta_d[tix] = 0.0;
+	}
+
+	weights_h_d[tix] -= (alpha_d * weights_h_delta_d[tix] / 55);
+	weights_h_delta_d[tix] = 0.0;
+
+	if(tix < OUTPUTS*H_HEIGHT){
+		weights_out_d[tix] -= (alpha_d * weights_out_delta_d[tix] / 55);
+		weights_out_delta_d[tix] = 0.0;
+	}
+
+	if(tix == 0){
+		error_d /= 55;
+		printf("%f\n", error_d * 100.0);
+		error_d = 0;
+	}
 }
 
 int main() {
-    int i;
+    int i, j;
     int samples;
     double **training_in, *training_out, **data_range;
-	double in[5];
-
-	printf("Before samples\n");
+	//double in[5];
+	//double target[0];
 
     samples = load_file(DATA_FILE, &training_in, &training_out, &data_range);
     normalize_data(training_in, training_out, data_range, samples);
     if (samples <= 0) {
         return 1;
     }
-
-	printf("Before init\n");
 
     initialize();
 
@@ -684,30 +794,52 @@ int main() {
 	//printf("H Out: %f\n", h_out[5][50]);
 	//printf("Outputs: %f\n", outputs[0]);
 
-	printf("Before mem\n");
-
 	device_mem_transfer(training_in, training_out, data_range, samples);
 
-	printf("dim3\n");
-
-	dim3 dimBlock(20,1);
+	dim3 dimBlock(H_HEIGHT,1);
 	dim3 dimGrid(1,1);
+	dim3 dimBlock2((H_LAYERS-1)*H_HEIGHT*H_HEIGHT,1);
 
-	for(i=0;i<5;i++)
-		in[i] = training_in[0][i];
-	printf("Before cuda\n");
+	//for(i=0;i<5;i++)
+	//	in[i] = training_in[0][i];
 
-	cudaMalloc((void **)&in_d, 5 * sizeof(double));
-	cudaMemcpy(in_d, in, 5 * sizeof(double), cudaMemcpyHostToDevice);
+	//cudaMalloc((void **)&in_d, 5 * sizeof(double));
+	//cudaMemcpy(in_d, in, 5 * sizeof(double), cudaMemcpyHostToDevice);
 
-	printf("Before fwd\n");
+	//target[0]=training_out[0];
+	//cudaMalloc((void **)&target_out_d, sizeof(double));
+	//cudaMemcpy(target_out_d, target, sizeof(double), cudaMemcpyHostToDevice);
 
-	fwd<<<dimGrid,dimBlock>>>(weights_in_d, h_out_d, weights_h_d, weights_out_d, outputs_d, INPUTS, H_HEIGHT, H_LAYERS, in_d, OUTPUTS, data_range_d);
+	cudaMemset(&error_d,0,sizeof(double));
+	//cudaMemset(&alpha_d,.5,sizeof(double));
 
-	//Test<<<1,1>>>(training_in_d, training_out_d, data_range_d, weights_in_d, weights_out_d, weights_h_d, h_out_d, outputs_d, INPUTS, samples, H_HEIGHT);
+	struct timeval t1, t2;
+
+	gettimeofday(&t1, NULL);
+
+	for(i = 0; i < ITERATIONS; i++){
+		for(j = 0; j < samples; j++){
+
+			fwd<<<dimGrid,dimBlock>>>(weights_in_d, h_out_d, weights_h_d, weights_out_d, outputs_d, INPUTS, H_HEIGHT, H_LAYERS, OUTPUTS, data_range_d, training_in_d, j);
+
+			cudaThreadSynchronize();
+
+			back<<<dimGrid,dimBlock>>>(h_out_d, weights_out_d, weights_h_d, weights_in_d, outputs_d, deltas_h_d, deltas_h_new_d, deltas_o_d, weights_in_delta_d, weights_out_delta_d, weights_h_delta_d, H_HEIGHT, INPUTS, OUTPUTS, H_LAYERS, training_in_d, training_out_d, j);
+	
+			cudaThreadSynchronize();
+
+			new_error<<<dimGrid,1>>>(outputs_d, training_out_d, j, data_range_d);
+
+		}
+		update<<<dimGrid,dimBlock2>>>(weights_in_d,weights_h_d,weights_out_d,weights_in_delta_d,weights_h_delta_d, weights_out_delta_d);
+
 		cudaThreadSynchronize();
+	}
 
-	cudaFree(training_in_d);
+	gettimeofday(&t2, NULL);
+
+	printf("\nTiming: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)/1e6);
+
 	cudaFree(training_out_d);
 	cudaFree(data_range_d);
 	cudaFree(weights_in_d);
@@ -715,6 +847,14 @@ int main() {
 	cudaFree(weights_h_d);
 	cudaFree(h_out_d);
 	cudaFree(outputs_d);
+	cudaFree(in_d);
+	cudaFree(target_out_d);
+	cudaFree(deltas_h_d);
+	cudaFree(deltas_h_new_d);
+	cudaFree(deltas_o_d);
+	cudaFree(weights_in_delta_d);
+	cudaFree(weights_out_delta_d);
+	cudaFree(weights_h_delta_d);
 
 	return 0;
 
