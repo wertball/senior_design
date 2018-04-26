@@ -15,8 +15,11 @@
 #define DATA_FILE "data_for_training.txt"
 #define TEST_FILE "data_for_verify.txt"
 
-#define ITERATIONS 1E4
-#define THREADS 6
+#define ITERATIONS 1E6
+
+#ifndef THREADS
+#define THREADS 8
+#endif
 
 //#define DEBUG
 //#define DEBUG_VERBOSE
@@ -45,7 +48,7 @@ double h_out[THREADS][H_LAYERS][H_HEIGHT];
 double outputs[THREADS][OUTPUTS];
 
 //Learning declarations
-double ALPHA = .001;
+double ALPHA = .5;
 
 //Randomization functions----------------------
 void randomize_array(int length, double arr[length]) {
@@ -86,13 +89,15 @@ static inline void initialize() {
 static inline double activation(double input) {
     //return 1.0f / (1.0f + exp(-1 * input)); //sigmoid
     //return exp(-1 * (input * input)); //Gaussian
-    return (exp(input) - exp(-input)) / (exp(input) + exp(-input)); //tanh
+    //return (exp(input) - exp(-input)) / (exp(input) + exp(-input)); //tanh
+    return (input < 0) ? 0.01*input : input; //Leaky ReLU
 }
 
 static inline double derivative(double input) {
     //return input * (1 - input); //sigmoid
     //return -2 * input * exp(activation(input)); //Gaussian
-    return 1 - (input * input); //tanh
+    //return 1 - (input * input); //tanh
+    return (input < 0) ? 0.01 : 1; //Leaky ReLU
 }
 
 //Normalization functions--------------------
@@ -176,13 +181,13 @@ void forward(double in[INPUTS], double *output_range, int tid) {
 
 void backpropagation(double in[INPUTS], double target_out[OUTPUTS],
                      double weights_in_delta[INPUTS * H_HEIGHT], double weights_out_delta[OUTPUTS * H_HEIGHT]
-#if (BIAS > 0)
-        ,double weights_bias_out_delta[OUTPUTS], double weights_bias_h_delta[H_LAYERS][H_HEIGHT]
-#endif
-#if (H_LAYERS > 1)
-        ,double weights_h_delta[H_LAYERS-1][H_HEIGHT*H_HEIGHT]
-#endif
-        , int tid) {
+                     #if (BIAS > 0)
+                            ,double weights_bias_out_delta[OUTPUTS], double weights_bias_h_delta[H_LAYERS][H_HEIGHT]
+                     #endif
+                     #if (H_LAYERS > 1)
+                            ,double weights_h_delta[H_LAYERS-1][H_HEIGHT*H_HEIGHT]
+                     #endif
+                            , int tid) {
     int i,j,k;
     double delta_sum;
     double deltas_h[H_HEIGHT];
@@ -393,7 +398,8 @@ void train(double **training_in, double *training_out, double **data_range, int 
     int i, j, k, thread_id;
     double error, temp;
     long long it = 0;
-    struct timeval t1, t2;
+    struct timeval t1, t2, t_it1, t_it2;
+    double it_time_sum = 0;
 
     gettimeofday(&t1, NULL);
     error = 1;
@@ -412,6 +418,7 @@ void train(double **training_in, double *training_out, double **data_range, int 
         #endif
 
         //Forward and back for each sample
+        gettimeofday(&t_it1, NULL);
         #pragma omp parallel private(thread_id)
         {
             thread_id = omp_get_thread_num();
@@ -421,7 +428,7 @@ void train(double **training_in, double *training_out, double **data_range, int 
                 forward(training_in[i], data_range[INPUTS], thread_id);
                 error += fabs(denormalize(outputs[thread_id][0], data_range[INPUTS][0], data_range[INPUTS][1])
                               - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))
-                         / denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
+                              / denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]);
                 backpropagation(training_in[i], &training_out[i],
                                 weights_in_delta[thread_id], weights_out_delta[thread_id]
                 #if (BIAS > 0)
@@ -433,6 +440,8 @@ void train(double **training_in, double *training_out, double **data_range, int 
                         , thread_id);
             }
         }
+        gettimeofday(&t_it2, NULL);
+        it_time_sum += t_it2.tv_sec - t_it1.tv_sec + (t_it2.tv_usec - t_it1.tv_usec)*1.0E-6;
         error *= (100.0f / samples);
 
         //Average weight deltas and apply
@@ -496,16 +505,17 @@ void train(double **training_in, double *training_out, double **data_range, int 
                        denormalize(outputs[0], data_range[5][0], data_range[5][1]));
             }
             #endif
-            printf("Iteration: %.3e\n", (double) it);
-            printf("Current Average Training %%Error: %.3f%%\n", error);
+            //printf("Iteration: %.3e\n", (double) it);
+            //printf("Current Average Training %%Error: %.3f%%\n", error);
             fflush(stdout);
         }
         it++;
     }
 
     gettimeofday(&t2, NULL);
-    printf("Training time: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
-    printf("Iterations: %.3e\n", (double) it);
+    printf(/*"Training time:*/ "%f\t", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
+    printf(/*"Average parallel section time:*/ "%.3e\n", it_time_sum / ITERATIONS);
+    //printf("Iterations: %.3e\n", (double) it);
 
     error = 0;
     for (i = 0; i < samples; i++) {
@@ -523,7 +533,7 @@ void train(double **training_in, double *training_out, double **data_range, int 
                denormalize(outputs[0][0], data_range[5][0], data_range[5][1]));
         #endif
     }
-    printf("Final Average Training %%Error: %.3f%%\n", error * (100.0f / samples));
+    //printf("Final Average Training %%Error: %.3f%%\n", error * (100.0f / samples));
 }
 
 int test(char *filename, double **data_range) {
@@ -575,6 +585,7 @@ int main() {
     double **training_in, *training_out, **data_range;
 
     omp_set_num_threads(THREADS);
+    //printf("THREADS = %d\n", THREADS);
 
 
     samples = load_file(DATA_FILE, &training_in, &training_out, &data_range);
