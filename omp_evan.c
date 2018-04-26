@@ -15,7 +15,7 @@
 #define DATA_FILE "data_for_training.txt"
 #define TEST_FILE "data_for_verify.txt"
 
-#define ITERATIONS 1E6
+#define ITERATIONS 1E4
 
 #ifndef THREADS
 #define THREADS 8
@@ -23,6 +23,7 @@
 
 //#define DEBUG
 //#define DEBUG_VERBOSE
+#define DATA_COLLECTION
 
 //Weight declarations
 double weights_in[INPUTS * H_HEIGHT];// = {.15,.20};
@@ -489,7 +490,9 @@ void train(double **training_in, double *training_out, double **data_range, int 
         }
         #endif
 
-
+        #ifdef DATA_COLLECTION
+        printf("%lli\t%.3f\n", it, error);
+        #endif
 
         //Debug prints
         if ((it & 0xFFFF) == 0) {
@@ -513,8 +516,8 @@ void train(double **training_in, double *training_out, double **data_range, int 
     }
 
     gettimeofday(&t2, NULL);
-    printf(/*"Training time:*/ "%f\t", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
-    printf(/*"Average parallel section time:*/ "%.3e\n", it_time_sum / ITERATIONS);
+    //printf(/*"Training time:*/ "%f\t", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
+    //printf(/*"Average parallel section time:*/ "%.3e\n", it_time_sum / ITERATIONS);
     //printf("Iterations: %.3e\n", (double) it);
 
     error = 0;
@@ -573,8 +576,12 @@ int test(char *filename, double **data_range) {
                sample_error * 100);
         #endif
     }
-    printf("Average Testing %%Error: %.3f%%\n", average_error * (100.0f / samples));
-    printf("Max %%Error: %.3f%%\n", max_error*100);
+    //printf("Average Testing %%Error: %.3f%%\n", average_error * (100.0f / samples));
+    //printf("Max %%Error: %.3f%%\n", max_error*100);
+    
+    #ifdef DATA_COLLECTION
+    printf("%.3f\n", average_error * (100.0f / samples));
+    #endif
 
     return 0;
 }
@@ -595,10 +602,10 @@ int main() {
     }
     initialize();
 
-    printf("\nTraining...\n");
+    //printf("\nTraining...\n");
     train(training_in, training_out, data_range, samples);
 
-    printf("\nTesting...\n");
+    //printf("\nTesting...\n");
     test(TEST_FILE, data_range);
 
     //Free dynamic arrays
