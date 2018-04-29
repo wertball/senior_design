@@ -6,9 +6,14 @@
 #include <float.h>
 
 #define INPUTS 5
-#define H_LAYERS 3
-#define H_HEIGHT 10
+#define H_LAYERS 4
+#ifndef H_HEIGHT
+#define H_HEIGHT 18
+#endif
 #define OUTPUTS 1
+#ifndef true_sample
+#define true_sample 1
+#endif
 #define BIAS 0
 #define alpha_d 0.5
 
@@ -164,7 +169,6 @@ void forward(double in[INPUTS], double *output_range) {
         outputs[i] += weights_bias_out[i] * BIAS;
         #endif
 
-		printf("CPU Output: %f\n", outputs[0]);
         //Normalize output
         outputs[i] = normalize(outputs[i], output_range[0], output_range[1]);
 
@@ -396,14 +400,6 @@ void train(double **training_in, double *training_out, double **data_range, int 
     long long it = 0;
     struct timeval t1, t2;
 
-    double weights_in_delta[INPUTS*H_HEIGHT], weights_out_delta[OUTPUTS*H_HEIGHT];
-    #if (BIAS > 0)
-    double weights_bias_out_delta[OUTPUTS], weights_bias_h_delta[H_LAYERS][H_HEIGHT];
-    #endif
-    #if (H_LAYERS>1)
-    double weights_h_delta[H_LAYERS-1][H_HEIGHT*H_HEIGHT];
-    #endif
-
     gettimeofday(&t1, NULL);
     error = 1;
     while (it < ITERATIONS) {
@@ -452,9 +448,14 @@ void train(double **training_in, double *training_out, double **data_range, int 
         }
         #endif
 
+		memset(weights_in_delta, 0, INPUTS*H_HEIGHT*sizeof(double));
+		memset(weights_out_delta, 0, OUTPUTS*H_HEIGHT*sizeof(double));
+		#if (H_LAYERS>1)
+		memset(weights_h_delta, 0, (H_LAYERS-1)*H_HEIGHT*H_HEIGHT*sizeof(double));
+		#endif
 
         //Debug prints
-        if ((it & 0xFFFF) == 0) {
+        /*if ((it & 0xFFFF) == 0) {
             #ifdef DEBUG
             for (j = 0; j < samples; j++) {
                 forward(training_in[j], data_range[INPUTS]);
@@ -470,7 +471,7 @@ void train(double **training_in, double *training_out, double **data_range, int 
             printf("Iteration: %.3e\n", (double) it);
             printf("Average %%Error: %.3f%%\n", error);
             fflush(stdout);
-        }
+        }*/
         it++;
     }
 
@@ -478,8 +479,7 @@ void train(double **training_in, double *training_out, double **data_range, int 
     printf("Training time: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)*1.0E-6);
     printf("Iterations: %llu\n", it);
 
-    error = 0;
-    for (i = 0; i < samples; i++) {
+    /*for (i = 0; i < samples; i++) {
         forward(training_in[i], data_range[INPUTS]);
         error += fabs(denormalize(outputs[0], data_range[INPUTS][0], data_range[INPUTS][1])
                       - denormalize(training_out[i], data_range[INPUTS][0], data_range[INPUTS][1]))
@@ -491,8 +491,8 @@ void train(double **training_in, double *training_out, double **data_range, int 
                denormalize(training_in[i][3], data_range[3][0], data_range[3][1]),
                denormalize(training_in[i][4], data_range[4][0], data_range[4][1]),
                denormalize(outputs[0], data_range[5][0], data_range[5][1]));
-    }
-    printf("Average %%Error: %.3f%%\n", error * (100.0f / samples));
+    }*/
+    printf("Average %%Error: %.3f%%\n", error);
 }
 
 int test(char *filename, double **data_range) {
@@ -536,20 +536,20 @@ int test(char *filename, double **data_range) {
 
 }
 
-void device_mem_transfer(double **training_in, double *training_out, double **data_range, int samples){
+void device_mem_transfer(double **training_in, double *training_out, double **data_range, int sample){
 
 	int i, j;
 
-	gpuErrchk(cudaMalloc((void **)&deltas_h_d, sizeof(double) * H_HEIGHT * samples));
-	gpuErrchk(cudaMalloc((void **)&deltas_h_new_d, sizeof(double) * H_HEIGHT * samples));
-	gpuErrchk(cudaMalloc((void **)&deltas_o_d, sizeof(double) * OUTPUTS * samples));
-	gpuErrchk(cudaMemset(deltas_h_d, 0, sizeof(double) * H_HEIGHT * samples));
-	gpuErrchk(cudaMemset(deltas_h_new_d, 0, sizeof(double) * H_HEIGHT * samples));
-	gpuErrchk(cudaMemset(deltas_o_d, 0, sizeof(double) * OUTPUTS * samples));
+	gpuErrchk(cudaMalloc((void **)&deltas_h_d, sizeof(double) * H_HEIGHT * sample));
+	gpuErrchk(cudaMalloc((void **)&deltas_h_new_d, sizeof(double) * H_HEIGHT * sample));
+	gpuErrchk(cudaMalloc((void **)&deltas_o_d, sizeof(double) * OUTPUTS * sample));
+	gpuErrchk(cudaMemset(deltas_h_d, 0, sizeof(double) * H_HEIGHT * sample));
+	gpuErrchk(cudaMemset(deltas_h_new_d, 0, sizeof(double) * H_HEIGHT * sample));
+	gpuErrchk(cudaMemset(deltas_o_d, 0, sizeof(double) * OUTPUTS * sample));
 
-	size_t training_in_size = sizeof(double) * INPUTS * samples;
+	size_t training_in_size = sizeof(double) * INPUTS * sample;
 	double *training_in_oneD = (double *)malloc(training_in_size);
-	for(int i = 0; i < samples; i++){
+	for(int i = 0; i < sample; i++){
 		for(int j = 0; j < INPUTS; j++){
 			training_in_oneD[i*INPUTS+j] = training_in[i][j];
 		}
@@ -558,7 +558,7 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 	gpuErrchk(cudaMalloc((void **)&training_in_d, training_in_size)); 		//training_in
 	gpuErrchk(cudaMemcpy(training_in_d, training_in_oneD, training_in_size, cudaMemcpyHostToDevice));
 
-	size_t training_out_size = sizeof(double) * samples;
+	size_t training_out_size = sizeof(double) * sample;
 	gpuErrchk(cudaMalloc((void **)&training_out_d, training_out_size)); 	//training_out
 	gpuErrchk(cudaMemcpy(training_out_d, training_out, training_out_size, cudaMemcpyHostToDevice));
 
@@ -576,14 +576,14 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 	size_t weights_in_size = sizeof(double) * INPUTS * H_HEIGHT;
 	gpuErrchk(cudaMalloc((void **)&weights_in_d, weights_in_size));      	//weights_in
 	gpuErrchk(cudaMemcpy(weights_in_d, weights_in, weights_in_size, cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMalloc((void **)&weights_in_delta_d, weights_in_size * samples));
-	gpuErrchk(cudaMemset(weights_in_delta_d, 0, weights_in_size * samples));
+	gpuErrchk(cudaMalloc((void **)&weights_in_delta_d, weights_in_size * sample));
+	gpuErrchk(cudaMemset(weights_in_delta_d, 0, weights_in_size * sample));
 
 	size_t weights_out_size = sizeof(double) * OUTPUTS * H_HEIGHT;
 	gpuErrchk(cudaMalloc((void **)&weights_out_d, weights_out_size));      //weights_out
 	gpuErrchk(cudaMemcpy(weights_out_d, weights_out, weights_out_size, cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMalloc((void **)&weights_out_delta_d, weights_out_size * samples));
-	gpuErrchk(cudaMemset(weights_out_delta_d, 0, weights_out_size * samples));
+	gpuErrchk(cudaMalloc((void **)&weights_out_delta_d, weights_out_size * sample));
+	gpuErrchk(cudaMemset(weights_out_delta_d, 0, weights_out_size * sample));
 
 	size_t weights_h_size = sizeof(double) * (H_LAYERS - 1) * H_HEIGHT * H_HEIGHT;
 	double *weights_h_oneD = (double *)malloc(weights_h_size);
@@ -592,8 +592,8 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 			weights_h_oneD[i*(H_HEIGHT*H_HEIGHT)+j] = weights_h[i][j];
 		}
 	}
-	gpuErrchk(cudaMalloc((void **)&weights_h_delta_d, weights_h_size * samples));
-	gpuErrchk(cudaMemset(weights_h_delta_d, 0, weights_h_size * samples));
+	gpuErrchk(cudaMalloc((void **)&weights_h_delta_d, weights_h_size * sample));
+	gpuErrchk(cudaMemset(weights_h_delta_d, 0, weights_h_size * sample));
 
 	gpuErrchk(cudaMalloc((void **)&weights_h_d, weights_h_size)); //weights_h
 	gpuErrchk(cudaMemcpy(weights_h_d, weights_h_oneD, weights_h_size, cudaMemcpyHostToDevice));
@@ -606,10 +606,10 @@ void device_mem_transfer(double **training_in, double *training_out, double **da
 		}
 	}
 
-	gpuErrchk(cudaMalloc((void **)&h_out_d, h_out_size * samples)); //weights_h
-	gpuErrchk(cudaMemset(h_out_d, 0, h_out_size * samples));
+	gpuErrchk(cudaMalloc((void **)&h_out_d, h_out_size * sample)); //weights_h
+	gpuErrchk(cudaMemset(h_out_d, 0, h_out_size * sample));
 
-	size_t outputs_size = sizeof(double) * OUTPUTS * samples;
+	size_t outputs_size = sizeof(double) * OUTPUTS * sample;
 	gpuErrchk(cudaMalloc((void **)&outputs_d, outputs_size));      //outputs
 	gpuErrchk(cudaMemset(outputs_d, 0, outputs_size));
 
@@ -630,7 +630,7 @@ __device__ double denormalize_d(double input, double min, double max){
 __global__ void new_error(double *outputs_d, double *training_out_d, double *error_d, double *data_range_d, int sample){
 	int tix = threadIdx.x;
 	//printf("%d - %f - %f - %f - %f\n", tix, data_range_d[10], data_range_d[11], denormalize_d(outputs_d[tix], data_range_d[10], data_range_d[11]), outputs_d[tix]);
-	error_d[tix] += (fabs(denormalize_d(outputs_d[tix], data_range_d[10], data_range_d[11]) - denormalize_d(training_out_d[tix], data_range_d[10], data_range_d[11]))/denormalize_d(training_out_d[tix], data_range_d[10], data_range_d[11]));
+	error_d[tix] = (fabs(denormalize_d(outputs_d[tix], data_range_d[10], data_range_d[11]) - denormalize_d(training_out_d[tix], data_range_d[10], data_range_d[11]))/denormalize_d(training_out_d[tix], data_range_d[10], data_range_d[11]));
 	//printf("%d - %f\n", sample, error_d[0]);
 }
 
@@ -786,24 +786,36 @@ __global__ void back(double *h_out_d, double *weights_out_d, double *weights_h_d
 
 }
 
-__global__ void error_reduc(double *error_d){
-	for(int s = 1; s < blockDim.x; s *=2){
-		int index = 2 * s * threadIdx.x;
+__global__ void clear_error(double *error_d){
+	int tix = threadIdx.x;
+	error_d[tix] = 0.0;
+}
 
-		if(index < blockDim.x && (index+s) < blockDim.x){
-			error_d[index] += error_d[index + s];
+__global__ void error_reduc(double *error_d, int bit){
+	__shared__ double error_ds[55];
+	int tix = threadIdx.x;
+	error_ds[tix] = error_d[tix];
+
+	__syncthreads();
+
+	for(int s = 32; s > 0; s>>=1){
+		//int index = 2 * s * threadIdx.x;
+
+		if(tix < s && (tix+s) < true_sample){
+			error_ds[tix] += error_ds[tix + s];
 		}
 
 		__syncthreads();
 	}
 
-	if(threadIdx.x == 0){
+
+	if(tix == 0){
 		//printf("GPU Error before divide: %f\n",error_d[0]);
-		error_d[threadIdx.x] /= 55.0;
-		printf("GPU Error: %f\n", error_d[threadIdx.x] * 100.0);
+		error_ds[tix] /= 55.0;
+		printf("GPU Error: %f\n", error_ds[tix] * 100.0);
 	}
 
-	error_d[threadIdx.x] = 0.0;
+	error_d[tix] = 0.0;
 
 }
 
@@ -815,7 +827,11 @@ __global__ void update_win(double * weights_in_d, double *weights_in_delta_d){
 
 	int offset = INPUTS * H_HEIGHT;
 
-	i = 0;
+	for(i=1;i<true_sample;i++){
+		weights_in_delta_d[tix] += weights_in_delta_d[i*offset+tix];
+		weights_in_delta_d[i*offset+tix] = 0;
+	}
+/*		
 	for(i=0; i < 5; i++){
 		for(s=1; s < blockDim.y; s *=2){
 			int index = 2 * s * tiy;
@@ -836,39 +852,41 @@ __global__ void update_win(double * weights_in_d, double *weights_in_delta_d){
 
 		__syncthreads();
 	}
-
+*/
 	if(tiy == 0){
-		weights_in_d[tix] -= (alpha_d * weights_in_delta_d[tix] / 55.0);
+		weights_in_d[tix] -= (alpha_d * weights_in_delta_d[tix] / (true_sample*55.0));
 	}
 
 	__syncthreads();
 	i = 0;
-	for(i = 0; i < 5; i++){
+	//for(i = 0; i < 5; i++){
 		weights_in_delta_d[(i*11+tiy)*offset+tix] = 0.0;
-	}
+	//}
 
 }
 
-__global__ void update_wout(double * weights_out_d, double *weights_out_delta_d){
+__global__ void update_wout(double * weights_out_d, double *weights_out_delta_d, int bit){
+
+	//__shared__ double weights_out_delta_ds[10 * 55];
 
 	int tix = threadIdx.x;
 	int tiy = threadIdx.y;
 
 	int offset = OUTPUTS * H_HEIGHT;
+	//weights_out_delta_ds[tiy*offset+tix] = weights_out_delta_d[tiy*offset+tix];
 
-	for(int s=1; s < blockDim.y; s *=2){
-		int index = 2 * s * tiy;
+	for(int s=32; s > 0; s>>=1){
+		//int index = 2 * s * tiy;
 
-		if(index < blockDim.y && (index+s) < blockDim.y)
-			weights_out_delta_d[index*offset+tix] += weights_out_delta_d[(index+s)*offset+tix];
+		if(tiy < s && (tiy+s) < blockDim.y)
+			weights_out_delta_d[tiy*offset+tix] += weights_out_delta_d[(tiy+s)*offset+tix];
 
 		__syncthreads();
 	}
 
 	if(tiy == 0){
-		weights_out_d[tix] -= (alpha_d * weights_out_delta_d[tix] / 55.0);
+		weights_out_d[tix] -= (alpha_d * weights_out_delta_d[tix] / (true_sample*55.0));
 	}
-
 	__syncthreads();
 	weights_out_delta_d[tiy*offset+tix] = 0.0;
 }
@@ -880,7 +898,12 @@ __global__ void update_wh(double *weights_h_d, double *weights_h_delta_d){
 
 	int offset = (H_LAYERS-1) * H_HEIGHT * H_HEIGHT;
 
-	i = 0;
+
+	for(i = 1; i < true_sample; i++){
+		weights_h_delta_d[tix] += weights_h_delta_d[i*offset+tix];
+		weights_h_delta_d[i*offset+tix] = 0;
+	}
+	/*i = 0;
 	for(i = 0; i < 11; i++){
 		for(s=1; s < blockDim.y; s *=2){
 			int index = 2 * s * tiy;
@@ -898,17 +921,17 @@ __global__ void update_wh(double *weights_h_d, double *weights_h_delta_d){
 		if(index < 55 && (index+s) < 55)
 			weights_h_delta_d[(index * offset) + tix] += weights_h_delta_d[(index+s)*offset+tix];
 
-		__syncthreads();
-	}
+		__syncthreads()
+	}*/
 
 	if(tiy == 0){
-		weights_h_d[tix] -= (alpha_d * weights_h_delta_d[tix] / 2.0);
+		weights_h_d[tix] -= (alpha_d * weights_h_delta_d[tix] / (true_sample * 55.0));
 	}
 
 	__syncthreads();
 	i = 0;
-	for(i=0;i<11;i++)
-		weights_h_delta_d[(i*11*tiy)*offset+tix] = 0.0;
+	//for(i=0;i<11;i++)
+		weights_h_delta_d[(i*5+tiy)*offset+tix] = 0.0;
 }
 
 __global__ void update(double *weights_in_d, double *weights_h_d, double *weights_out_d, double *weights_in_delta_d, double *weights_h_delta_d, double *weights_out_delta_d, double *error_d){
@@ -929,7 +952,7 @@ __global__ void update(double *weights_in_d, double *weights_h_d, double *weight
 
 	if(tix < 1){
 		error_d[0] = error_d[0] * 100.0 / 55;
-		printf("GPU Error: %f\n", error_d[0]);
+		printf("\nGPU Error: %f\n", error_d[0]);
 		error_d[0] = 0;
 	}
 
@@ -941,6 +964,16 @@ __global__ void cuda_test(){
 
 __global__ void print_output(double *outputs_d){
 	printf("GPU Output - %f\n", outputs_d[0]);
+}
+
+int getBitNumber(int n){
+	n |= n>>1;
+	n |= n>>2;
+	n |= n>>4;
+	n |= n>>8;
+	n |= n>>16;
+	n++;
+	return(n>>1);
 }
 
 int main() {
@@ -970,14 +1003,16 @@ int main() {
 
 	device_mem_transfer(training_in, training_out, data_range, samples);
 
+	int bit = getBitNumber(true_sample);
+
 	dim3 dimBlock(H_HEIGHT,55);
 	dim3 dimGrid(1,1);
 	dim3 dimBlock2((H_LAYERS-1)*H_HEIGHT*H_HEIGHT,1);
 	dim3 errBlock(55,1);
-	dim3 winBlock(INPUTS*H_HEIGHT,11);
+	dim3 winBlock(INPUTS*H_HEIGHT,1);
 	dim3 winGrid(1,1);
 	dim3 woutBlock(OUTPUTS*H_HEIGHT,55);
-	dim3 whBlock((H_LAYERS-1)*H_HEIGHT*H_HEIGHT,5);
+	dim3 whBlock((H_LAYERS-1)*H_HEIGHT*H_HEIGHT,1);
 	dim3 whGrid(1,1);
 
 	//for(i=0;i<5;i++)
@@ -990,47 +1025,79 @@ int main() {
 	//cudaMalloc((void **)&target_out_d, sizeof(double));
 	//cudaMemcpy(target_out_d, target, sizeof(double), cudaMemcpyHostToDevice);
 
-	gpuErrchk(cudaMalloc((void **)&error_d, sizeof(double) * samples));
-	gpuErrchk(cudaMemset(error_d,0,sizeof(double) * samples));
+	gpuErrchk(cudaMalloc((void **)&error_d, sizeof(double) * true_sample));
+	gpuErrchk(cudaMemset(error_d,0,sizeof(double) * true_sample));
 	//cudaMemset(&alpha_d,.5,sizeof(double));
 
-	double temp_weights[INPUTS * H_HEIGHT];
-	double temp_hidden[(H_LAYERS-1)*H_HEIGHT*H_HEIGHT];
+	gpuErrchk(cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte));
 
-	struct timeval t1, t2;
+	//double temp_weights[INPUTS * H_HEIGHT];
+	//double temp_hidden[(H_LAYERS-1)*H_HEIGHT*H_HEIGHT];
 
-	gettimeofday(&t1, NULL);
+	struct timeval start, end, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14;
+	double fwd_time = 0, back_time = 0, new_error_time = 0, win_time = 0, wout_time = 0, wh_time = 0, error_reduc_time = 0;
+
+	gettimeofday(&start, NULL);
 
 	for(i = 0; i < ITERATIONS; i++){
 		//for(j = 0; j < samples; j++){
+		//	clear_error<<<1,errBlock>>>(error_d);
+		//	gpuErrchk(cudaPeekAtLastError());
+		//	gpuErrchk(cudaDeviceSynchronize());
+	
+			for(j = 0; j < true_sample; j++){
+				gettimeofday(&t1, NULL);
 
-			fwd<<<dimGrid,dimBlock>>>(weights_in_d, h_out_d, weights_h_d, weights_out_d, outputs_d, INPUTS, H_HEIGHT, H_LAYERS, OUTPUTS, data_range_d, training_in_d, 0);
-			gpuErrchk(cudaPeekAtLastError());
-			gpuErrchk(cudaDeviceSynchronize());
+				fwd<<<dimGrid,dimBlock>>>(weights_in_d, h_out_d, weights_h_d, weights_out_d, outputs_d, INPUTS, H_HEIGHT, H_LAYERS, OUTPUTS, data_range_d, training_in_d, 0);
+				gpuErrchk(cudaPeekAtLastError());
+				gpuErrchk(cudaDeviceSynchronize());
+
+				gettimeofday(&t2, NULL);
+				fwd_time += t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)/1e6;
+				gettimeofday(&t3, NULL);
+
 
 			//if(i == ITERATIONS-1)
 			//	print_results<<<1,1>>>(outputs_d, training_out_d, data_range_d, j);
 
-			back<<<dimGrid,dimBlock>>>(h_out_d, weights_out_d, weights_h_d, weights_in_d, outputs_d, deltas_h_d, deltas_h_new_d, deltas_o_d, weights_in_delta_d, weights_out_delta_d, weights_h_delta_d, H_HEIGHT, INPUTS, OUTPUTS, H_LAYERS, training_in_d, training_out_d, 0);
-			gpuErrchk(cudaPeekAtLastError());
-			gpuErrchk(cudaDeviceSynchronize());
+				back<<<dimGrid,dimBlock>>>(h_out_d, weights_out_d, weights_h_d, weights_in_d, outputs_d, deltas_h_d, deltas_h_new_d, deltas_o_d, weights_in_delta_d, weights_out_delta_d, weights_h_delta_d, H_HEIGHT, INPUTS, OUTPUTS, H_LAYERS, training_in_d, training_out_d, 0);
+				gpuErrchk(cudaPeekAtLastError());
+				gpuErrchk(cudaDeviceSynchronize());
 
-			new_error<<<1,errBlock>>>(outputs_d, training_out_d, error_d, data_range_d, 0);
-			gpuErrchk(cudaPeekAtLastError());
-			gpuErrchk(cudaDeviceSynchronize());
+				gettimeofday(&t4, NULL);
+				back_time += t4.tv_sec - t3.tv_sec + (t4.tv_usec - t3.tv_usec)/1e6;
+				//gettimeofday(&t5, NULL);
+
+		//		new_error<<<1,errBlock>>>(outputs_d, training_out_d, error_d, data_range_d, 0);
+		//		gpuErrchk(cudaPeekAtLastError());
+		//		gpuErrchk(cudaDeviceSynchronize());
 		//}
 /*		update<<<dimGrid,dimBlock2>>>(weights_in_d,weights_h_d,weights_out_d,weights_in_delta_d,weights_h_delta_d, weights_out_delta_d, error_d);
 			gpuErrchk(cudaPeekAtLastError());
 			gpuErrchk(cudaDeviceSynchronize());
 	}
 */
+		//		gettimeofday(&t6, NULL);
+		//		new_error_time += t6.tv_sec - t5.tv_sec + (t6.tv_usec - t5.tv_usec)/1e6;
+				//gettimeofday(&t7, NULL);
+			}
+
+			gettimeofday(&t7, NULL);
 			update_win<<<winGrid,winBlock>>>(weights_in_d, weights_in_delta_d);
 			gpuErrchk(cudaPeekAtLastError());
 			gpuErrchk(cudaDeviceSynchronize());
 
-			update_wout<<<dimGrid,woutBlock>>>(weights_out_d, weights_out_delta_d);
+			gettimeofday(&t8, NULL);
+			win_time += t8.tv_sec - t7.tv_sec + (t8.tv_usec - t7.tv_usec)/1e6;
+			gettimeofday(&t9, NULL);
+
+			update_wout<<<dimGrid,woutBlock>>>(weights_out_d, weights_out_delta_d, bit);
 			gpuErrchk(cudaPeekAtLastError());
 			gpuErrchk(cudaDeviceSynchronize());
+
+			gettimeofday(&t10, NULL);
+			wout_time += t10.tv_sec - t9.tv_sec + (t10.tv_usec - t9.tv_usec)/1e6;
+			gettimeofday(&t11, NULL);
 
 			update_wh<<<whGrid,whBlock>>>(weights_h_d, weights_h_delta_d);
 			gpuErrchk(cudaPeekAtLastError());
@@ -1042,20 +1109,52 @@ int main() {
 			//gpuErrchk(cudaDeviceSynchronize());
 
 
-			error_reduc<<<dimGrid,errBlock>>>(error_d);
-			gpuErrchk(cudaPeekAtLastError());
-			gpuErrchk(cudaDeviceSynchronize());
+			gettimeofday(&t12, NULL);
+			wh_time += t12.tv_sec - t11.tv_sec + (t12.tv_usec - t11.tv_usec)/1e6;
+			//gettimeofday(&t13, NULL);
+
+			//error_reduc<<<dimGrid,errBlock>>>(error_d);
+			//gpuErrchk(cudaPeekAtLastError());
+			//gpuErrchk(cudaDeviceSynchronize());
+
+			//gettimeofday(&t14, NULL);
+			//error_reduc_time += t14.tv_sec - t13.tv_sec + (t14.tv_usec - t13.tv_usec)/1e6;
 
 		//}
 		//update<<<dimGrid,dimBlock2>>>(weights_in_d,weights_h_d,weights_out_d,weights_in_delta_d,weights_h_delta_d, weights_out_delta_d);
 
 	}
-	gettimeofday(&t2, NULL);
+	gettimeofday(&end, NULL);
+	fwd<<<dimGrid,dimBlock>>>(weights_in_d, h_out_d, weights_h_d, weights_out_d, outputs_d, INPUTS, H_HEIGHT, H_LAYERS, OUTPUTS, data_range_d, training_in_d, 0);
+	gpuErrchk(cudaPeekAtLastError());
+	gpuErrchk(cudaDeviceSynchronize());
+	new_error<<<1,errBlock>>>(outputs_d, training_out_d, error_d, data_range_d, 0);
+	gpuErrchk(cudaPeekAtLastError());
+	gpuErrchk(cudaDeviceSynchronize());
+	printf("\nSamples - %d\n", true_sample * 55);
+	error_reduc<<<dimGrid,errBlock>>>(error_d, bit);
+	gpuErrchk(cudaPeekAtLastError());
+	gpuErrchk(cudaDeviceSynchronize());
 
 	print_results<<<1,1>>>(outputs_d, training_out_d, data_range_d, 1);
 	gpuErrchk(cudaPeekAtLastError());
 	gpuErrchk(cudaDeviceSynchronize());
 
+	printf("\nTiming: %f\n", end.tv_sec - start.tv_sec + (end.tv_usec - start.tv_usec)/1e6);
+	printf("Total Fwd Time: %f\n", fwd_time);
+	printf("Average Fwd Time: %f\n", fwd_time/(ITERATIONS*true_sample));
+	printf("Total Back Time: %f\n", back_time);
+	printf("Average Back Time: %f\n", back_time/(ITERATIONS*true_sample));
+	printf("Total New Error Time: %f\n", new_error_time);
+	printf("Average New Error Time: %f\n", new_error_time/(ITERATIONS*true_sample));
+	printf("Total Win Time: %f\n", win_time);
+	printf("Average Win Time: %f\n", win_time/ITERATIONS);
+	printf("Total Wout Time: %f\n", wout_time);
+	printf("Average Wout Time: %f\n", wout_time/ITERATIONS);
+	printf("Total WH Time: %f\n", wh_time);
+	printf("Average WH Time: %f\n", wh_time/ITERATIONS);
+	//printf("Total Error Reduc Time: %f\n", error_reduc_time);
+	//printf("Average Error Reduc Time: %f\n", error_reduc_time/ITERATIONS);
 	//return;
 	double error;
 /*
@@ -1129,7 +1228,6 @@ int main() {
 */
 
 
-	printf("\nTiming: %f\n", t2.tv_sec - t1.tv_sec + (t2.tv_usec - t1.tv_usec)/1e6);
 	//print_results<<<1,1>>>(outputs_d, training_out_d, data_range_d);
 
 	cudaThreadSynchronize();
@@ -1150,11 +1248,11 @@ int main() {
 	cudaFree(weights_out_delta_d);
 	cudaFree(weights_h_delta_d);
 
-	return 0;
-
-    printf("Training...\n");
+    printf("\n\nTraining...\n");
     train(training_in, training_out, data_range, samples);
 
+	return 0;
+/*
     printf("Testing...\n");
     test(TEST_FILE, data_range);
 
@@ -1169,5 +1267,5 @@ int main() {
     free(data_range);
     free(training_out);
     return 0;
-        error *= (100.0f / samples);
+        error *= (100.0f / samples);*/
 }
